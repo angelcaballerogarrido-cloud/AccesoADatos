@@ -1,53 +1,54 @@
 package com.example.accessingdatajpa;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.example.accessingdatajpa.entities.Clientes;
+import com.example.accessingdatajpa.repositories.ClientesController;
 
 @SpringBootApplication
-public class AccessingDataJpaApplication {
+public class AccessingDataJpaApplication implements CommandLineRunner {
 
-    private static final Logger logger = LoggerFactory.getLogger(AccessingDataJpaApplication.class);
+    // Inyectamos el Repositorio mágicamente
+    @Autowired
+    private ClientesController clientRepository;
 
     public static void main(String[] args) {
         SpringApplication.run(AccessingDataJpaApplication.class, args);
     }
 
-    @Bean
-    public CommandLineRunner demo(CustomerRepository repository) {
-        return (args) -> {
-            // save a few customers
-            repository.save(new Customer("Jack", "Bauer"));
-            repository.save(new Customer("Chloe", "O'Brian"));
-            repository.save(new Customer("Kim", "Bauer"));
-            repository.save(new Customer("David", "Palmer"));
-            repository.save(new Customer("Michelle", "Dessler"));
+    @Override
+    public void run(String... args) throws Exception {
+        funcionPruebas1();
+    }
 
-            // fetch all customers
-            logger.info("Customers found with findAll():");
-            logger.info("-------------------------------");
-            repository.findAll().forEach(customer -> {
-                logger.info(customer.toString());
-            });
-            logger.info("");
+    @Transactional
+    public void funcionPruebas1() {
+        // ESCRITURA EN BBDD
+        Clientes cl1 = new Clientes("Pepe");
+        Clientes cl2 = new Clientes("Juan");
 
-            // fetch an individual customer by ID
-            Customer customer = repository.findById(1L);
-            logger.info("Customer found with findById(1L):");
-            logger.info("--------------------------------");
-            logger.info(customer.toString());
-            logger.info("");
+        // uno a uno
+        clientRepository.save(cl1);
+        clientRepository.save(cl2);
 
-            // fetch customers by last name
-            logger.info("Customer found with findByLastName('Bauer'):");
-            logger.info("--------------------------------------------");
-            repository.findByLastName("Bauer").forEach(bauer -> {
-                logger.info(bauer.toString());
-            });
-            logger.info("");
-        };
+        // juntos
+        Clientes cl3 = new Clientes("Ana");
+        Clientes cl4 = new Clientes("Luis");
+        clientRepository.saveAll(List.of(cl3, cl4));
+
+        // LECTURAS DE BASE DE DATOS
+        Optional<Clientes> optionalClient = clientRepository.findById(1L);
+        if (optionalClient.isPresent()) {
+            System.out.println("==================================================");
+            System.out.println("Cliente nº 1 encontrado en la BBDD MySQL: " + optionalClient.get().getNombre());
+            System.out.println("==================================================");
+        }
     }
 }
