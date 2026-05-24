@@ -1,0 +1,15 @@
+<!DOCTYPE HTML>
+<html xmlns:th="https://www.thymeleaf.org">
+<head> 
+    <title>Getting Started: Handling Form Submission</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+</head>
+<body>
+	<h1>Resultado del POST</h1>
+    <!-- Mostramos los datos recogidos -->
+    <p th:text="'ID recogido: ' + ${greeting.id}" />
+    <p th:text="'Mensaje recogido: ' + ${greeting.content}" />
+    
+    <a href="/greeting">Enviar otro mensaje</a>
+</body>
+</html>
