@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<catalog>
+    <game id="g1" year="2015">
+        <title>The Witcher 3</title>
+        <developer>CD Projekt Red</developer>
+        <genre>RPG</genre>
+        <price>29.99</price>
+        <rating>9.8</rating>
+    </game>
+    <game id="g2" year="2018">
+        <title>God of War</title>
+        <developer>Santa Monica Studio</developer>
+        <genre>Action</genre>
+        <price>39.99</price>
+        <rating>9.6</rating>
+    </game>
+    <game id="g3" year="2022">
+        <title>Elden Ring</title>
+        <developer>FromSoftware</developer>
+        <genre>RPG</genre>
+        <price>59.99</price>
+        <rating>9.5</rating>
+    </game>
+    <game id="g4" year="2020">
+        <title>Cyberpunk 2077</title>
+        <developer>CD Projekt Red</developer>
+        <genre>RPG</genre>
+        <price>49.99</price>
+        <rating>8.5</rating>
+    </game>
+    <game id="g5" year="2011">
+        <title>Minecraft</title>
+        <developer>Mojang</developer>
+        <genre>Sandbox</genre>
+        <price>19.99</price>
+        <rating>9.0</rating>
+    </game>
+</catalog>
