@@ -1,0 +1,3645 @@
+﻿commit 0687add5048ece604a8f2b5e79fc97b24048a251
+Author: SISTEMAS\acaballero <acaballero@e-sistemas.net>
+Date:   Mon May 18 08:29:34 2026 +0200
+
+    Update: primera version funcional
+---
+ .gitignore                            |   1 +
+ admin/views/page-edit-inscripcion.php | 100 +++++++++
+ admin/views/page-edit-sharepoint.php  | 288 ++++++++++++++++++++++++++
+ admin/views/page-inscripciones.php    | 368 ++++++++++++++++------------------
+ includes/class-admin.php              | 183 +++++++++++++++--
+ includes/class-ajax.php               |   7 +-
+ includes/class-graph-api.php          |  46 +++++
+ includes/class-install.php            |  10 +-
+ ipaopunk.php                          |   4 +-
+ 9 files changed, 779 insertions(+), 228 deletions(-)
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..768e0de
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1 @@
++/scratch/
+diff --git a/admin/views/page-edit-inscripcion.php b/admin/views/page-edit-inscripcion.php
+new file mode 100644
+index 0000000..204b723
+--- /dev/null
++++ b/admin/views/page-edit-inscripcion.php
+@@ -0,0 +1,100 @@
++<?php
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++
++$id      = intval( $_GET['id'] ?? 0 );
++$sistema = sanitize_text_field( $_GET['sistema'] ?? 'old' );
++global $wpdb;
++
++// Cargamos datos según el sistema
++if ( $sistema === 'old' ) {
++	$table_name = $wpdb->prefix . "sistemas_inscripciones";
++	$data = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_name WHERE id = %d", $id ), ARRAY_A );
++} else {
++	$table_name = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
++	$data_db = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table_name WHERE id = %d", $id ), ARRAY_A );
++	// En el sistema nuevo, los datos reales están en SharePoint (JSON)
++	// Por ahora mostramos lo que tenemos en la BD y un aviso
++	$data = [
++		'nombre'    => 'Inscripción #' . $id,
++		'apellidos' => '(Datos en SharePoint)',
++		'email'     => $data_db['course_name'] ?? '',
++		'estado'    => $data_db['estado'] ?? 'pendiente'
++	];
++}
++?>
++
++<div class="wrap">
++	<h1 class="wp-heading-inline">Editar Inscripción #<?php echo $id; ?></h1>
++	<a href="admin.php?page=ipaopunk" class="page-title-action">Volver a la lista</a>
++	<hr class="wp-header-end">
++
++	<?php if ( $sistema === 'new' ) : ?>
++		<div class="notice notice-info">
++			<p><strong>☁️ Inscripción de SharePoint:</strong> Esta inscripción se gestiona a través del nuevo sistema. Los archivos y datos completos están persistidos en tu carpeta de SharePoint.</p>
++		</div>
++	<?php endif; ?>
++
++	<div id="poststuff">
++		<div id="post-body" class="metabox-holder columns-2">
++			
++			<div id="post-body-content">
++				<div class="postbox">
++					<div class="postbox-header"><h2 class="hndle">Datos del Alumno</h2></div>
++					<div class="inside">
++						<form method="post" action="">
++							<table class="form-table">
++								<tr>
++									<th><label for="nombre">Nombre</label></th>
++									<td><input name="nombre" type="text" id="nombre" value="<?php echo esc_attr($data['nombre'] ?? ''); ?>" class="regular-text" <?php echo $sistema==='new' ? 'readonly' : ''; ?>></td>
++								</tr>
++								<tr>
++									<th><label for="apellidos">Apellidos</label></th>
++									<td><input name="apellidos" type="text" id="apellidos" value="<?php echo esc_attr($data['apellidos'] ?? ''); ?>" class="regular-text" <?php echo $sistema==='new' ? 'readonly' : ''; ?>></td>
++								</tr>
++								<tr>
++									<th><label for="email">Correo electrónico</label></th>
++									<td><input name="email" type="email" id="email" value="<?php echo esc_attr($data['email'] ?? ''); ?>" class="regular-text" <?php echo $sistema==='new' ? 'readonly' : ''; ?>></td>
++								</tr>
++								<tr>
++									<th><label for="estado">Estado</label></th>
++									<td>
++										<select name="estado" id="estado">
++											<?php 
++											$estados = $sistema === 'old' ? [0=>'Pendiente', 1=>'Enviado', 2=>'Firmado'] : ['pendiente'=>'Pendiente', 'enviado'=>'Enviado', 'firmado'=>'Firmado'];
++											foreach($estados as $val => $label): ?>
++												<option value="<?php echo $val; ?>" <?php selected(($data['estado'] ?? ''), $val); ?>><?php echo $label; ?></option>
++											<?php endforeach; ?>
++										</select>
++									</td>
++								</tr>
++							</table>
++							
++							<div class="submit">
++								<input type="submit" name="ipao_update_inscripcion" class="button button-primary" value="Guardar Cambios">
++								<?php if($sistema === 'old'): ?>
++									<a href="https://ipao.online/contrato/?cid=<?php echo $id; ?>" target="_blank" class="button">📄 Generar Contrato</a>
++								<?php endif; ?>
++							</div>
++						</form>
++					</div>
++				</div>
++			</div>
++
++			<div id="postbox-container-1" class="postbox-container">
++				<div class="postbox">
++					<div class="postbox-header"><h2 class="hndle">Detalles del Sistema</h2></div>
++					<div class="inside">
++						<p><strong>ID:</strong> <?php echo $id; ?></p>
++						<p><strong>Origen:</strong> <?php echo $sistema === 'new' ? '✅ SharePoint (Nuevo)' : '⚠️ Base de Datos (Antiguo)'; ?></p>
++						<p><strong>Fecha:</strong> <?php echo date('d/m/Y H:i'); ?></p>
++						<hr>
++						<button class="button button-link-delete" style="color:#a00;">Eliminar Inscripción</button>
++					</div>
++				</div>
++			</div>
++
++		</div>
++	</div>
++</div>
+diff --git a/admin/views/page-edit-sharepoint.php b/admin/views/page-edit-sharepoint.php
+new file mode 100644
+index 0000000..9350a94
+--- /dev/null
++++ b/admin/views/page-edit-sharepoint.php
+@@ -0,0 +1,288 @@
++<?php
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++
++// CARGA DE DATOS DESDE SHAREPOINT (Trasplante de corazón)
++if(isset($_GET['cid'])){
++	$api = new IPAO_Graph_API();
++	$json_content = $api->get_file_content_by_name($_GET['cid'], 'datos.json');
++	
++	if ( ! $json_content ) {
++		echo "<div class='notice notice-error'><p>No se pudo cargar el archivo datos.json desde SharePoint.</p></div>";
++		return;
++	}
++
++	$raw_data = json_decode($json_content, true);
++	
++	// MAPEAMOS LOS CAMPOS PARA QUE EL FORMULARIO ORIGINAL LOS ENTIENDA
++	// El original usa $query_Total[0]['campo']
++	$query_Total = [
++		[
++			'area_formativa'   => $raw_data['area-formativa'] ?? '',
++			'curso'            => $raw_data['curso'] ?? '',
++			'formacion'        => $raw_data['formacion'] ?? '',
++			'materia'          => $raw_data['materia'] ?? '',
++			'nombre'           => $raw_data['nombre'] ?? '',
++			'apellidos'        => $raw_data['apellidos'] ?? '',
++			'DNI'              => $raw_data['dni'] ?? $raw_data['DNI'] ?? '',
++			'fecha_nacimiento' => $raw_data['fechanacimiento'] ?? $raw_data['fecha_nacimiento'] ?? '',
++			'email'            => $raw_data['email'] ?? '',
++			'domicilio'        => $raw_data['direccion'] ?? $raw_data['domicilio'] ?? '',
++			'localidad'        => $raw_data['localidad'] ?? '',
++			'provincia'        => $raw_data['provincia'] ?? '',
++			'codigo_postal'    => $raw_data['cp'] ?? $raw_data['codigo_postal'] ?? '',
++			'tlf_movil'        => $raw_data['tlf-movil'] ?? $raw_data['tlf_movil'] ?? '',
++			'tlf_fijo'         => $raw_data['tlf-fijo'] ?? $raw_data['tlf_fijo'] ?? 0,
++			'nombre_tutor'     => $raw_data['nombre-tutor'] ?? $raw_data['nombre_tutor'] ?? '',
++			'apellidos_tutor'  => $raw_data['apellidos-tutor'] ?? $raw_data['apellidos_tutor'] ?? '',
++			'DNI_tutor'        => $raw_data['dni-tutor'] ?? $raw_data['DNI_tutor'] ?? '',
++			'email_tutor'      => $raw_data['email-tutor'] ?? $raw_data['email_tutor'] ?? '',
++			'tlf_movil_tutor'  => $raw_data['tlf-tutor'] ?? $raw_data['tlf_movil_tutor'] ?? '',
++			'modalidad'        => ($raw_data['modalidad-pago'] ?? '') == 'presencial' ? 0 : 1,
++			'forma_pago'       => $raw_data['forma-pago'] ?? 0,
++			'nombre_titular_db'    => $raw_data['nombre-titular-cuenta'] ?? '',
++			'apellido_titular_db'  => $raw_data['apellidos-titular-cuenta'] ?? '',
++			'domicilio_titular_db' => $raw_data['direccion-titular-cuenta'] ?? '',
++			'localidad_titular_db' => $raw_data['localidad-titular-cuenta'] ?? '',
++			'provincia_titular_db' => $raw_data['provincia-titular-cuenta'] ?? '',
++			'codigo_postal_titular_db' => $raw_data['cp-titular-cuenta'] ?? '',
++			'entidad_titular_db'   => $raw_data['entidad-bancaria-titular-cuenta'] ?? '',
++			'numero_cuenta_titular_db' => $raw_data['numero-cuenta-domiciliacion-titular-cuenta'] ?? '',
++			'fecha_inicio'         => $raw_data['fecha-inicio-contrato'] ?? $raw_data['fecha_inicio'] ?? '',
++			'fecha_fin'            => $raw_data['fecha-fin-contrato'] ?? $raw_data['fecha_fin'] ?? '',
++			'fecha_certificado_asistencia' => $raw_data['fecha-asistencia-contrato'] ?? '',
++			'observaciones'        => $raw_data['observaciones-contrato'] ?? $raw_data['observaciones'] ?? '',
++			'archivos'             => $raw_data['arrayArchivos'] ?? ''
++		]
++	];
++
++	global $wpdb;
++	$table_name2 = $wpdb->prefix . 'sistemas_courses';
++	$courses = $wpdb->get_results($wpdb->prepare("SELECT id, name FROM $table_name2 WHERE top_category=%d order by name", 0), ARRAY_A);
++
++	// ENCRIPTAR ID PARA EL BOTÓN DE CONTRATO (Igual que en la tabla)
++	$encryption_key = "L5a9D22a8J29u9M5i12@";
++	$iv = openssl_random_pseudo_bytes(16);
++	$ciphertext = openssl_encrypt($_GET['cid'], 'aes-256-cbc', $encryption_key, OPENSSL_RAW_DATA, $iv);
++	$encrypted_id = base64_encode($iv . $ciphertext);
++	$contrato_url = "https://ipao.online/contrato/?cid=" . urlencode($encrypted_id);
++?>
++<head>
++	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
++</head>
++<div class="wrap">
++	<h1 class='wp-heading-inline'>Editar Inscripción (SharePoint)</h1>
++	
++	<form method="post" enctype="multipart/form-data" id="form-edit-sharepoint">
++		<input type="hidden" name="sp_folder_id" value="<?php echo esc_attr($_GET['cid']); ?>">
++		<input type="submit" class="page-title-action" name="ipao_update_sp" value="ACTUALIZAR EN SHAREPOINT" style="margin-bottom: 10px; background:#093454; color:white; border:none; padding:5px 15px; cursor:pointer;">
++		
++		<table class="wp-list-table widefat fixed striped pages">
++			<tbody id="the-list">
++				<thead>
++					<tr>
++						<th>DATOS DEL CURSO</th>
++						<th></th>
++					</tr>
++					<tr>
++						<td style="border-bottom: none;">
++							<label for="area-formativa">Area formativa <span style="color: red;">*</span></label> <br>
++							<select id="select-area-formativa" name="area-formativa" class="form-select" style="width: 100%;margin-top:10px;" required>
++								<?php
++									foreach($courses as $course){
++										$selected = ($course["id"] == $query_Total[0]["area_formativa"]) ? "selected" : "";
++										echo"<option value='".$course["id"]."' $selected>".$course["name"]."</option>";
++									}
++								?>
++							</select>
++						</td>
++						<td style="border-bottom: none;">
++							<label for="curso">Curso <span style="color: red;">*</span></label> <br>
++							<select id="select-curso" name="curso" style="width: 100%;margin-top:10px;" class="form-select">
++								<!-- Se rellena por AJAX de ipao-sistemas -->
++							</select>
++						</td>
++					</tr>
++					<tr>
++						<td>
++							<label for="formacion">Formación <span style="color: red;">*</span></label> <br>
++							<select id="select-formacion" name="formacion" style="width: 100%;margin-top:10px;" class="form-select">
++								<!-- Se rellena por AJAX de ipao-sistemas -->
++							</select>
++						</td>
++						<td>
++							<label for="materia">Materia</label> <br>
++							<div class="mb-3" id="select-materia">
++								<!-- Se rellena por AJAX de ipao-sistemas -->
++							</div>
++						</td>
++					</tr>
++					
++					<tr>
++						<th>DATOS DEL ALUMNO</th>
++						<th></th>
++					</tr>
++					<tr>
++						<td style="border-bottom: none;">
++							<label for="nombre">Nombre <span style="color: red;">*</span></label>
++							<input type="text" id="nombre" name="nombre" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['nombre'];?>" required>
++						</td>
++						<td style="border-bottom: none;">
++							<label for="apellidos">Apellidos <span style="color: red;">*</span></label>
++							<input type="text" id="apellidos" name="apellidos" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['apellidos'];?>" required>
++						</td>
++					</tr>
++					<tr>
++						<td style="border-bottom: none;">
++							<label for="dni">DNI <span style="color: red;">*</span></label>
++							<input type="text" id="dni" name="dni" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['DNI'];?>" required>
++						</td>
++						<td style="border-bottom: none;">
++							<label for="fechanacimiento">Fecha de nacimiento <span style="color: red;">*</span></label>
++							<input type="date" id="fechanacimiento" name="fechanacimiento" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['fecha_nacimiento'];?>" required>
++						</td>
++					</tr>
++					<tr>
++						<td style="border-bottom: none;">
++							<label for="email">Correo electrónico <span style="color: red;">*</span></label>
++							<input type="email" id="email" name="email" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['email'];?>" required>
++						</td>
++						<td style="border-bottom: none;">
++							<label for="direccion">Dirección <span style="color: red;">*</span></label>
++							<input type="text" id="direccion" name="direccion" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['domicilio'];?>" required>
++						</td>
++					</tr>
++					<tr>
++						<td style="border-bottom: none;">
++							<label for="localidad">Localidad <span style="color: red;">*</span></label>
++							<input type="text" id="localidad" name="localidad" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['localidad'];?>" required>
++						</td>
++						<td style="border-bottom: none;">
++							<label for="provincia">Provincia <span style="color: red;">*</span></label>
++							<input type="text" id="provincia" name="provincia" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['provincia'];?>" required>
++						</td>
++					</tr>
++					<tr>
++						<td style="border-bottom: none;">
++							<label for="cp">Código postal <span style="color: red;">*</span></label>
++							<input type="number" id="cp" name="cp" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['codigo_postal'];?>" required>
++						</td>
++						<td style="border-bottom: none;">
++							<label for="tlf-movil">Teléfono móvil <span style="color: red;">*</span></label>
++							<input type="number" id="tlf-movil" name="tlf-movil" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['tlf_movil'];?>" required>
++						</td>
++					</tr>
++					
++					<tr>
++						<th colspan="2">RELLENAR EN CASO DE TENER MENOS DE 18 AÑOS</th>
++					</tr>
++					<tr>
++						<td style="border-bottom: none;">
++							<label for="nombre-tutor">Nombre del tutor</label>
++							<input type="text" id="nombre-tutor" name="nombre-tutor" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['nombre_tutor'];?>">
++						</td>
++						<td style="border-bottom: none;">
++							<label for="dni-tutor">DNI del tutor</label>
++							<input type="text" id="dni-tutor" name="dni-tutor" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['DNI_tutor'];?>">
++						</td>
++					</tr>
++					
++					<tr>
++						<th colspan="2">DATOS DE PAGO Y CUENTA</th>
++					</tr>
++					<tr>
++						<td>
++							<label for="modalidad">Modalidad <span style="color: red;">*</span></label>
++							<select id="modalidad" name="modalidad-pago" class="form-select" style="width: 100%;margin-top:10px;">
++								<option value="online" <?php selected($query_Total[0]['modalidad'], 1); ?>>Online</option>
++								<option value="presencial" <?php selected($query_Total[0]['modalidad'], 0); ?>>Presencial</option>
++							</select>
++						</td>
++						<td>
++							<label>Forma de pago</label><br>
++							<fieldset style="margin-top:10px;">
++								<input type='radio' class='forma-pago' name='forma-pago' value='0' <?php checked($query_Total[0]['forma_pago'], 0); ?>> Efectivo
++								<input type='radio' class='forma-pago' name='forma-pago' value='1' <?php checked($query_Total[0]['forma_pago'], 1); ?>> Transferencia
++								<input type='radio' class='forma-pago' name='forma-pago' value='2' <?php checked($query_Total[0]['forma_pago'], 2); ?>> Domiciliación
++							</fieldset>
++						</td>
++					</tr>
++					<tr>
++						<td>
++							<label for="entidad-bancaria-titular-cuenta">Nombre entidad bancaria</label>
++							<input type="text" id="entidad-bancaria-titular-cuenta" name="entidad-bancaria-titular-cuenta" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['entidad_titular_db'];?>">
++						</td>
++						<td>
++							<label for="numero-cuenta-domiciliacion-titular-cuenta">Número cuenta para domiciliación</label>
++							<input type="text" id="numero-cuenta-domiciliacion-titular-cuenta" name="numero-cuenta-domiciliacion-titular-cuenta" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['numero_cuenta_titular_db'];?>">
++						</td>
++					</tr>
++					
++					<tr>
++						<th>DATOS DEL CONTRATO</th>
++						<th></th>
++					</tr>
++					<tr>
++						<td>
++							<label for="fecha-inicio-contrato">Fecha de inicio</label>
++							<input type="date" id="fecha-inicio-contrato" name="fecha-inicio-contrato" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['fecha_inicio'];?>">
++						</td>
++						<td>
++							<label for="fecha-fin-contrato">Fecha de fin</label>
++							<input type="date" id="fecha-fin-contrato" name="fecha-fin-contrato" class="form-control" style="width: 100%;margin-top:10px;" value="<?php echo $query_Total[0]['fecha_fin'];?>">
++						</td>
++					</tr>
++					<tr>
++						<td colspan="2">
++							<label for="observaciones-contrato">Observaciones: </label>
++							<textarea id="observaciones-contrato" name="observaciones-contrato" rows="4" class="form-control" style="width: 100%;margin-top:10px;"><?php echo $query_Total[0]['observaciones'];?></textarea>
++						</td>
++					</tr>
++				</thead>
++			</tbody>				
++		</table>
++		
++		<div style="margin-top:20px; display:flex; gap:10px; align-items:center;">
++			<button type="submit" name="ipao_update_sp" style="height: 40px; width: 220px; background-color:#093454; color:white; border:none; cursor:pointer; font-weight:bold; border-radius:4px;">ACTUALIZAR EN CLOUD</button>
++			<button type="button" id="send-contrato-sp" style="height: 40px; width: 200px; background-color:#093454; color:white; border:none; cursor:pointer; font-weight:bold; border-radius:4px;">ENVIAR CONTRATO</button>
++			<a href="<?php echo $contrato_url; ?>" target="_blank" style="height: 38px; width: 150px; background-color:#ffffff; color:#0d6efd; border:1.5px solid #0d6efd; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; font-weight:500; border-radius:6px; font-size:14px;">
++				<span style="margin-right:8px; opacity:0.7;">📄</span> Contrato
++			</a>
++		</div>
++	</form>
++</div>
++
++<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
++<script>
++	$(document).ready(function() {
++		const folder_id = "<?php echo $_GET['cid']; ?>";
++		
++		// Reutilizamos la lógica AJAX de ipao-sistemas para los desplegables
++		// (Para simplificar, usaremos los endpoints existentes)
++		
++		$("#send-contrato-sp").click(function(e){
++			e.preventDefault();
++			if(!confirm("¿Enviar contrato por email?")) return;
++			
++			$.ajax({					 
++				url: "../wp-content/plugins/ipao-sistemas/admin/ajax/send-contract.php",
++				type: "POST",
++				data: {"id": folder_id},
++				success:function(response){
++					alert("Contrato Enviado correctamente.");
++				}
++			});
++		});
++		
++		// Lógica de validación de campos bancarios (clonada del original)
++		$('.forma-pago').click(function(){
++			if($(this).val() == '2'){
++				$('#numero-cuenta-domiciliacion-titular-cuenta').attr('required', true);
++			} else {
++				$('#numero-cuenta-domiciliacion-titular-cuenta').removeAttr('required');
++			}
++		});
++	});
++</script>
++<?php } ?>
+diff --git a/admin/views/page-inscripciones.php b/admin/views/page-inscripciones.php
+index 70aa266..75933e9 100644
+--- a/admin/views/page-inscripciones.php
++++ b/admin/views/page-inscripciones.php
+@@ -4,221 +4,191 @@ if ( ! defined( 'ABSPATH' ) ) {
+ }
+ ?>
+ <div class="wrap">
+-<h1 class="wp-heading-inline">Inscripciones (IpaoPunk)</h1>
+-<hr class="wp-header-end">
+-
+-<?php
+-global $wpdb;
+-$table = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
+-
+-// ── Filtros ────────────────────────────────────────────────────────────────
+-$filtro_estado = sanitize_text_field( $_GET['filtro_estado'] ?? '' );
+-$search        = sanitize_text_field( $_GET['s'] ?? '' );
+-
+-$where  = '1=1';
+-$params = [];
+-if ( $filtro_estado ) {
+-	$where .= $wpdb->prepare( ' AND estado = %s', $filtro_estado );
+-}
+-if ( $search ) {
+-	$like   = '%' . $wpdb->esc_like( $search ) . '%';
+-	$where .= $wpdb->prepare( ' AND course_name LIKE %s', $like );
+-}
+-
+-$inscripciones = $wpdb->get_results( "SELECT * FROM {$table} WHERE {$where} ORDER BY fecha_inscripcion DESC" );
+-
+-// ── Totales por estado ─────────────────────────────────────────────────────
+-$totales = $wpdb->get_results( "SELECT estado, COUNT(*) as total FROM {$table} GROUP BY estado", OBJECT_K );
+-$total_all = array_sum( array_column( $wpdb->get_results( "SELECT COUNT(*) as total FROM {$table}" ), 'total' ) );
+-?>
+-
+-<style>
+-.ipao-stats { display:flex; gap:12px; margin:16px 0; flex-wrap:wrap; }
+-.ipao-stat  { background:#fff; border:1px solid #ddd; border-radius:8px; padding:12px 20px; min-width:120px; text-align:center; }
+-.ipao-stat strong { display:block; font-size:28px; line-height:1; }
+-.ipao-stat span   { font-size:12px; color:#888; }
+-.ipao-filters { display:flex; gap:8px; margin-bottom:16px; align-items:center; flex-wrap:wrap; }
+-.ipao-badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; }
+-.ipao-badge.pendiente  { color:#b45309; background:#fef9c3; }
+-.ipao-badge.confirmado { color:#0369a1; background:#e0f2fe; }
+-.ipao-badge.firmado    { color:#166534; background:#dcfce7; }
+-.ipao-badge.cancelado  { color:#991b1b; background:#fee2e2; }
+-.ipao-actions button   { cursor:pointer; }
+-#ipao-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:99999; align-items:center; justify-content:center; }
+-#ipao-modal-overlay.active { display:flex; }
+-#ipao-modal { background:#fff; border-radius:8px; padding:24px; max-width:560px; width:90%; max-height:90vh; overflow:auto; position:relative; }
+-#ipao-modal h2 { margin-top:0; }
+-#ipao-modal-close { position:absolute; top:12px; right:16px; background:none; border:none; font-size:22px; cursor:pointer; color:#888; }
+-#ipao-firma-img { max-width:100%; border:1px solid #ddd; border-radius:4px; margin-top:12px; }
+-#ipao-modal-spinner { text-align:center; padding:20px; }
+-.ipao-estado-select { padding:4px 8px; border-radius:4px; border:1px solid #ccc; }
+-</style>
+-
+-<!-- Stats -->
+-<div class="ipao-stats">
+-	<div class="ipao-stat">
+-		<strong><?php echo count( $wpdb->get_results( "SELECT id FROM {$table}" ) ); ?></strong>
+-		<span>Total</span>
+-	</div>
+-	<?php foreach ( ['pendiente'=>'Pendientes','firmado'=>'Firmados','confirmado'=>'Confirmados','cancelado'=>'Cancelados'] as $est => $label ) : ?>
+-	<div class="ipao-stat">
+-		<strong><?php echo isset($totales[$est]) ? intval($totales[$est]->total) : 0; ?></strong>
+-		<span><?php echo $label; ?></span>
+-	</div>
+-	<?php endforeach; ?>
+-</div>
+-
+-<!-- Filtros -->
+-<div class="ipao-filters">
+-	<form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
++	<h1 class="wp-heading-inline">Gestión de Inscripciones</h1>
++	<a href="#" class="page-title-action">Añadir Nueva</a>
++	<hr class="wp-header-end">
++
++	<?php
++	global $wpdb;
++	$table_new = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
++	$table_old = $wpdb->prefix . 'sistemas_inscripciones';
++	
++	// Filtros y búsqueda
++	$s = sanitize_text_field( $_GET['s'] ?? '' );
++	$estado_filter = sanitize_text_field( $_GET['estado'] ?? '' );
++	
++	// Aquí iría la lógica de obtención de datos (simplificada para la vista)
++	// En una implementación real, esto se pasaría desde el controlador (class-admin.php)
++	?>
++
++	<ul class="subsubsub">
++		<li class="all"><a href="admin.php?page=ipaopunk" class="<?php echo !$estado_filter ? 'current' : ''; ?>">Todos <span class="count">(<?php echo count($inscripciones); ?>)</span></a> |</li>
++		<li class="pendiente"><a href="admin.php?page=ipaopunk&estado=pendiente" class="<?php echo $estado_filter === 'pendiente' ? 'current' : ''; ?>">Pendientes</a> |</li>
++		<li class="firmado"><a href="admin.php?page=ipaopunk&estado=firmado" class="<?php echo $estado_filter === 'firmado' ? 'current' : ''; ?>">Firmados</a> |</li>
++		<li class="importar"><a href="#tab-import" id="show-import">📥 Importar/Exportar</a></li>
++	</ul>
++
++	<form method="get" action="">
+ 		<input type="hidden" name="page" value="ipaopunk">
+-		<input type="search" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Buscar por curso…" class="regular-text">
+-		<select name="filtro_estado">
+-			<option value="">— Todos los estados —</option>
+-			<?php foreach(['pendiente','firmado','confirmado','cancelado'] as $e): ?>
+-			<option value="<?php echo $e; ?>" <?php selected($filtro_estado,$e); ?>><?php echo ucfirst($e); ?></option>
+-			<?php endforeach; ?>
+-		</select>
+-		<button type="submit" class="button">Filtrar</button>
+-		<?php if ($filtro_estado || $search): ?>
+-		<a href="<?php echo admin_url('admin.php?page=ipaopunk'); ?>" class="button">Limpiar</a>
+-		<?php endif; ?>
+-	</form>
+-	<span style="margin-left:auto;color:#888;"><?php echo count($inscripciones); ?> resultados</span>
+-</div>
+-
+-<!-- Tabla -->
+-<table class="wp-list-table widefat fixed striped" style="border-radius:8px;overflow:hidden;">
+-	<thead>
+-		<tr>
+-			<th width="50">ID</th>
+-			<th>Curso</th>
+-			<th>Carpeta SharePoint</th>
+-			<th width="140">Estado</th>
+-			<th width="140">Fecha</th>
+-			<th width="180">Acciones</th>
+-		</tr>
+-	</thead>
+-	<tbody>
+-	<?php if ( empty( $inscripciones ) ) : ?>
+-		<tr>
+-			<td colspan="6" style="text-align:center;padding:40px;color:#888;">
+-				<span style="font-size:40px;">📋</span><br>
+-				No hay inscripciones<?php echo ($filtro_estado||$search) ? ' con ese filtro' : ' todavía'; ?>.
+-			</td>
+-		</tr>
+-	<?php else : ?>
+-		<?php foreach ( $inscripciones as $ins ) : ?>
+-		<tr id="ipao-row-<?php echo $ins->id; ?>">
+-			<td><strong>#<?php echo esc_html($ins->id); ?></strong></td>
+-			<td><strong><?php echo esc_html($ins->course_name); ?></strong></td>
+-			<td style="font-size:12px;word-break:break-all;">
+-				<?php echo $ins->sharepoint_folder_path ? '📁 ' . esc_html(substr($ins->sharepoint_folder_path,0,50)) : '<span style="color:#aaa">—</span>'; ?>
+-			</td>
+-			<td>
+-				<select class="ipao-estado-select" data-id="<?php echo $ins->id; ?>">
+-					<?php foreach(['pendiente','firmado','confirmado','cancelado'] as $e): ?>
+-					<option value="<?php echo $e; ?>" <?php selected($ins->estado,$e); ?>><?php echo ucfirst($e); ?></option>
+-					<?php endforeach; ?>
++		<p class="search-box">
++			<label class="screen-reader-text" for="post-search-input">Buscar inscripciones:</label>
++			<input type="search" id="post-search-input" name="s" value="<?php echo esc_attr($s); ?>">
++			<input type="submit" id="search-submit" class="button" value="Buscar">
++		</p>
++
++		<div class="tablenav top">
++			<div class="alignleft actions bulkactions">
++				<label for="bulk-action-selector-top" class="screen-reader-text">Seleccionar acción en lote</label>
++				<select name="action" id="bulk-action-selector-top">
++					<option value="-1">Acciones en lote</option>
++					<option value="bulk-delete">Eliminar permanentemente</option>
++					<option value="bulk-status-firmado">Marcar como Firmado</option>
++					<option value="bulk-status-enviado">Marcar como Enviado</option>
++					<option value="bulk-status-pendiente">Marcar como Pendiente</option>
++				</select>
++				<input type="submit" id="doaction" class="button action" value="Aplicar">
++			</div>
++			
++			<div class="alignleft actions">
++				<select name="estado" id="filter-by-status">
++					<option value="">Todos los estados</option>
++					<option value="pendiente" <?php selected($estado_filter, 'pendiente'); ?>>Pendiente</option>
++					<option value="enviado" <?php selected($estado_filter, 'enviado'); ?>>Enviado</option>
++					<option value="firmado" <?php selected($estado_filter, 'firmado'); ?>>Firmado</option>
+ 				</select>
+-			</td>
+-			<td style="font-size:12px;"><?php echo esc_html(date_i18n('d/m/Y H:i', strtotime($ins->fecha_inscripcion))); ?></td>
+-			<td class="ipao-actions">
+-				<button class="button button-small ipao-ver-firma"
+-					data-id="<?php echo $ins->id; ?>"
+-					data-folder="<?php echo esc_attr($ins->sharepoint_folder_id); ?>"
+-					data-curso="<?php echo esc_attr($ins->course_name); ?>">
+-					🖊 Ver Firma
+-				</button>
+-			</td>
+-		</tr>
+-		<?php endforeach; ?>
+-	<?php endif; ?>
+-	</tbody>
+-</table>
++				<input type="submit" name="filter_action" id="post-query-submit" class="button" value="Filtrar">
++			</div>
++		</div>
++
++		<table class="wp-list-table widefat fixed striped table-view-list">
++			<thead>
++				<tr>
++					<td id="cb" class="manage-column column-cb check-column"><input id="cb-select-all-1" type="checkbox"></td>
++					<th scope="col" class="manage-column column-primary">Inscripción</th>
++					<th scope="col">Curso / Formación</th>
++					<th scope="col" width="100">Contrato</th>
++					<th scope="col" width="120">Estado</th>
++					<th scope="col" width="120">Fecha</th>
++				</tr>
++			</thead>
++
++			<tbody id="the-list">
++				<?php if ( empty( $inscripciones ) ) : ?>
++					<tr>
++						<td colspan="6">
++							<?php if ( isset($inscripciones_error) ) : ?>
++								<div class="notice notice-warning inline"><p><?php echo esc_html($inscripciones_error); ?></p></div>
++							<?php else : ?>
++								No se han encontrado inscripciones.
++							<?php endif; ?>
++						</td>
++					</tr>
++				<?php else : 
++					// Preparar clave para enlaces de contrato
++					$encryption_key = "L5a9D22a8J29u9M5i12@";
++				?>
++					<?php foreach ( $inscripciones as $ins ) : 
++						// Preparar clave para enlaces de contrato (compatible con IDs de SharePoint)
++						$iv = openssl_random_pseudo_bytes(16);
++						$ciphertext = openssl_encrypt($ins->id, 'aes-256-cbc', $encryption_key, OPENSSL_RAW_DATA, $iv);
++						$encrypted_id = base64_encode($iv . $ciphertext);
++						
++						// URL del contrato (mantenemos la estructura original)
++						$contrato_url = "https://ipao.online/contrato/?cid=" . urlencode($encrypted_id);
++						
++						// Determinar URL de edición
++						$edit_url = admin_url( 'admin.php?page=ipaopunk-edit-sp&cid=' . $ins->id . '&sistema=' . $ins->sistema );
++					?>
++						<tr class="iedit">
++							<th scope="row" class="check-column">
++								<input type="checkbox" name="bulk_ids[]" value="<?php echo $ins->id; ?>" data-sistema="<?php echo $ins->sistema; ?>">
++							</th>
++							<td class="column-primary has-row-actions">
++								<strong>
++									<a class="row-title" href="<?php echo $edit_url; ?>"><?php echo esc_html($ins->alumno); ?></a>
++								</strong>
++								<?php if($ins->sistema === 'new'): ?>
++									<span class="post-state">— <span class="dashicons dashicons-cloud" title="SharePoint"></span></span>
++								<?php endif; ?>
++								<div class="row-actions">
++									<span class="edit"><a href="<?php echo $edit_url; ?>">Editar</a> | </span>
++									<span class="trash"><a href="#" class="submitdelete" style="color:#a00;">Eliminar</a> | </span>
++									<span class="view"><a href="<?php echo $contrato_url; ?>" target="_blank">Ver Contrato</a></span>
++								</div>
++							</td>
++							<td>
++								<span style="font-size:11px; color:#666;"><?php echo esc_html($ins->course_name); ?></span>
++							</td>
++							<td>
++								<a href="<?php echo $contrato_url; ?>" class="button button-small" target="_blank">📄 Contrato</a>
++							</td>
++							<td>
++								<select class="ipao-status-select" data-id="<?php echo $ins->id; ?>" data-sistema="<?php echo $ins->sistema; ?>">
++									<option value="pendiente" <?php selected($ins->estado, 'pendiente'); ?>>Pendiente</option>
++									<option value="enviado" <?php selected($ins->estado, 'enviado'); ?>>Enviado</option>
++									<option value="firmado" <?php selected($ins->estado, 'firmado'); ?>>Firmado</option>
++								</select>
++							</td>
++							<td>
++								<?php echo esc_html(date_i18n('d/m/Y', strtotime($ins->fecha))); ?>
++							</td>
++						</tr>
++					<?php endforeach; ?>
++				<?php endif; ?>
++			</tbody>
++		</table>
++	</form>
+ 
+-<!-- Modal firma -->
+-<div id="ipao-modal-overlay">
+-	<div id="ipao-modal">
+-		<button id="ipao-modal-close">✕</button>
+-		<h2>🖊 Firma Digital</h2>
+-		<p id="ipao-modal-curso" style="color:#555;margin-top:-8px;"></p>
+-		<div id="ipao-modal-spinner"><span class="spinner is-active" style="float:none;margin:0 auto;display:block;"></span><br>Cargando desde SharePoint…</div>
+-		<img id="ipao-firma-img" src="" alt="Firma" style="display:none;">
+-		<div id="ipao-firma-error" style="display:none;color:#dc3232;"></div>
+-		<hr>
+-		<p style="font-size:12px;color:#888;margin-bottom:0;">Los datos personales se almacenan exclusivamente en SharePoint y no se guardan en WordPress.</p>
++	<!-- Sección de Importación (Oculta por defecto) -->
++	<div id="import-section" style="display:none; margin-top:30px; background:#fff; border:1px solid #ccd0d4; padding:20px; border-radius:4px;">
++		<h2>📥 Importar / Exportar Datos</h2>
++		<p>Desde aquí puedes gestionar la carga masiva o la exportación a Excel/PDF.</p>
++		<a href="<?php echo admin_url('admin.php?page=inscripciones-esistemas'); ?>" class="button button-secondary">Abrir Panel de Exportación Antiguo</a>
+ 	</div>
++
+ </div>
+ 
+-<script>
+-jQuery(function($){
+-	var nonce = '<?php echo wp_create_nonce('ipao_admin_action'); ?>';
++<style>
++.ipao-status-select { padding: 2px; border-radius: 4px; font-size: 12px; }
++.column-primary strong a { font-size: 14px; }
++</style>
+ 
+-	// ── Cambio de estado ────────────────────────────────────────────────────
+-	$(document).on('change', '.ipao-estado-select', function(){
+-		var $sel = $(this);
+-		var id   = $sel.data('id');
+-		var est  = $sel.val();
+-		$sel.prop('disabled', true);
++<script>
++jQuery(document).ready(function($) {
++	// Mostrar sección de importar
++	$('#show-import').click(function(e) {
++		e.preventDefault();
++		$('#import-section').slideToggle();
++	});
+ 
+-		$.post(ajaxurl, {
+-			action: 'ipao_cambiar_estado',
+-			nonce:  nonce,
+-			id:     id,
+-			estado: est
+-		}, function(res){
+-			$sel.prop('disabled', false);
+-			if(res.success){
+-				// Flash verde
+-				$('#ipao-row-' + id).css('background','#f0fff4');
+-				setTimeout(function(){ $('#ipao-row-' + id).css('background',''); }, 1500);
+-			} else {
+-				alert('Error: ' + (res.data || 'No se pudo actualizar.'));
+-				location.reload();
+-			}
+-		}).fail(function(){
+-			$sel.prop('disabled', false);
+-			alert('Error de red.');
+-		});
++	// Checkbox "seleccionar todos"
++	$('#cb-select-all-1').change(function() {
++		$('input[name="bulk_ids[]"]').prop('checked', $(this).prop('checked'));
+ 	});
+ 
+-	// ── Ver firma ───────────────────────────────────────────────────────────
+-	$(document).on('click', '.ipao-ver-firma', function(){
+-		var id     = $(this).data('id');
+-		var folder = $(this).data('folder');
+-		var curso  = $(this).data('curso');
++	// Cambio de estado individual (AJAX)
++	$('.ipao-status-select').change(function() {
++		var select = $(this);
++		var id = select.data('id');
++		var sistema = select.data('sistema');
++		var estado = select.val();
+ 
+-		$('#ipao-modal-curso').text(curso);
+-		$('#ipao-firma-img').hide().attr('src','');
+-		$('#ipao-firma-error').hide().text('');
+-		$('#ipao-modal-spinner').show();
+-		$('#ipao-modal-overlay').addClass('active');
++		select.css('opacity', '0.5');
+ 
+ 		$.post(ajaxurl, {
+-			action:    'ipao_get_firma',
+-			nonce:     nonce,
+-			id:        id,
+-			folder_id: folder
+-		}, function(res){
+-			$('#ipao-modal-spinner').hide();
+-			if(res.success && res.data.url){
+-				$('#ipao-firma-img').attr('src', res.data.url).show();
++			action: 'ipao_cambiar_estado',
++			id: id,
++			estado: estado,
++			sistema: sistema,
++			nonce: '<?php echo wp_create_nonce("ipao_admin_action"); ?>'
++		}, function(response) {
++			select.css('opacity', '1');
++			if (response.success) {
++				// Opcional: mostrar un check verde temporal
+ 			} else {
+-				$('#ipao-firma-error').text(res.data || 'No se pudo obtener la firma.').show();
++				alert('Error al cambiar el estado: ' + response.data);
+ 			}
+-		}).fail(function(){
+-			$('#ipao-modal-spinner').hide();
+-			$('#ipao-firma-error').text('Error de red al obtener la firma.').show();
+ 		});
+ 	});
+-
+-	// ── Cerrar modal ────────────────────────────────────────────────────────
+-	$('#ipao-modal-close, #ipao-modal-overlay').on('click', function(e){
+-		if(e.target === this){
+-			$('#ipao-modal-overlay').removeClass('active');
+-		}
+-	});
+ });
+ </script>
+-</div>
+diff --git a/includes/class-admin.php b/includes/class-admin.php
+index ac91e57..8813d36 100644
+--- a/includes/class-admin.php
++++ b/includes/class-admin.php
+@@ -8,6 +8,8 @@ class IPAO_Admin {
+ 	public static function init() {
+ 		add_action( 'admin_menu', [ __CLASS__, 'add_menu_pages' ] );
+ 		add_action( 'admin_init', [ __CLASS__, 'handle_settings_save' ] );
++		add_action( 'admin_init', [ __CLASS__, 'handle_bulk_actions' ] );
++		add_action( 'admin_init', [ __CLASS__, 'handle_edit_sp_save' ] );
+ 		add_action( 'wp_ajax_ipao_test_connection',  [ __CLASS__, 'handle_ajax_test_connection' ] );
+ 		add_action( 'wp_ajax_ipao_cambiar_estado',   [ __CLASS__, 'handle_ajax_cambiar_estado' ] );
+ 		add_action( 'wp_ajax_ipao_get_firma',        [ __CLASS__, 'handle_ajax_get_firma' ] );
+@@ -41,13 +43,96 @@ class IPAO_Admin {
+ 			'ipaopunk-settings',
+ 			[ __CLASS__, 'render_settings_page' ]
+ 		);
++
++		add_submenu_page(
++			null,
++			'Editar SharePoint',
++			'Editar SharePoint',
++			'manage_options',
++			'ipaopunk-edit-sp',
++			[ __CLASS__, 'render_edit_sp_page' ]
++		);
+ 	}
+ 
+ 	public static function render_inscripciones_page() {
+-		global $wpdb;
+-		$table = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
+-		$inscripciones = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY fecha_inscripcion DESC" );
+-		include IPAO_PLUGIN_PATH . 'admin/views/page-inscripciones.php';
++		// Filtros
++		$s = sanitize_text_field( $_GET['s'] ?? '' );
++		$inscripciones = [];
++		
++		try {
++			$api = new IPAO_Graph_API();
++			
++			// ÚNICA FUENTE DE VERDAD: SHAREPOINT
++			if ( $api->is_configured() ) {
++				$folders = $api->get_enrollment_folders();
++				if ( is_array($folders) ) {
++					foreach ( $folders as $f ) {
++						$name_parts = explode('_', $f['name']);
++						$dni     = $name_parts[0] ?? '???';
++						$alumno  = str_replace('-', ' ', ($name_parts[1] ?? '')) . ' ' . str_replace('-', ' ', ($name_parts[2] ?? ''));
++						
++						if ( $s && stripos($f['name'], $s) === false ) continue;
++
++						$inscripciones[] = (object) [
++							'id'          => $f['id'] ?? '',
++							'alumno'      => trim($alumno) ?: ($f['name'] ?? 'Sin nombre'),
++							'course_name' => $dni, 
++							'estado'      => 'confirmado',
++							'fecha'       => $f['lastModifiedDateTime'] ?? date('Y-m-d H:i:s'),
++							'sistema'     => 'new',
++							'webUrl'      => $f['webUrl'] ?? '#'
++						];
++					}
++				}
++			} else {
++				$inscripciones_error = "SharePoint no está configurado. Ve a la pestaña de Configuración para introducir las credenciales.";
++			}
++		} catch (Exception $e) {
++			error_log('IpaoPunk Critical Error: ' . $e->getMessage());
++		}
++
++		// Ordenar con seguridad
++		if ( ! empty($inscripciones) ) {
++			usort( $inscripciones, function($a, $b) { 
++				$t1 = strtotime($a->fecha) ?: 0;
++				$t2 = strtotime($b->fecha) ?: 0;
++				return $t2 - $t1; 
++			} );
++		}
++
++		if ( file_exists( IPAO_PLUGIN_PATH . 'admin/views/page-inscripciones.php' ) ) {
++			include IPAO_PLUGIN_PATH . 'admin/views/page-inscripciones.php';
++		} else {
++			echo "Error: No se encuentra la vista de inscripciones.";
++		}
++	}
++
++	public static function render_edit_sp_page() {
++		if ( isset($_GET['updated']) ) {
++			echo '<div class="notice notice-success is-dismissible"><p>Datos actualizados correctamente en SharePoint.</p></div>';
++		}
++		include IPAO_PLUGIN_PATH . 'admin/views/page-edit-sharepoint.php';
++	}
++
++	public static function handle_edit_sp_save() {
++		if ( ! isset( $_POST['sp_folder_id'] ) ) return;
++		if ( ! current_user_can( 'manage_options' ) ) return;
++
++		$folder_id = sanitize_text_field( $_POST['sp_folder_id'] );
++		$data = $_POST;
++		unset($data['sp_folder_id']); // No queremos guardar el ID dentro del JSON
++
++		$json = json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE );
++		
++		try {
++			$api = new IPAO_Graph_API();
++			$api->upload_file( $folder_id, 'datos.json', $json );
++			
++			wp_redirect( admin_url( 'admin.php?page=ipaopunk-edit-sp&cid=' . $folder_id . '&updated=1' ) );
++			exit;
++		} catch ( Exception $e ) {
++			wp_die( 'Error al guardar en SharePoint: ' . $e->getMessage() );
++		}
+ 	}
+ 
+ 	public static function render_settings_page() {
+@@ -95,28 +180,35 @@ class IPAO_Admin {
+ 			wp_send_json_error( 'Permiso denegado.' );
+ 		}
+ 
+-		global $wpdb;
+-		$table   = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
+-		$id      = intval( $_POST['id'] ?? 0 );
+-		$estados = [ 'pendiente', 'confirmado', 'firmado', 'cancelado' ];
++		$id      = sanitize_text_field( $_POST['id'] ?? '' );
+ 		$estado  = sanitize_text_field( $_POST['estado'] ?? '' );
++		$sistema = sanitize_text_field( $_POST['sistema'] ?? 'new' );
+ 
+-		if ( ! $id || ! in_array( $estado, $estados, true ) ) {
+-			wp_send_json_error( 'Datos inválidos.' );
++		if ( ! $id || ! $estado ) {
++			wp_send_json_error( 'Datos insuficientes.' );
+ 		}
+ 
+-		$updated = $wpdb->update(
+-			$table,
+-			[ 'estado' => $estado ],
+-			[ 'id'     => $id ],
+-			[ '%s' ],
+-			[ '%d' ]
+-		);
+-
+-		if ( $updated !== false ) {
+-			wp_send_json_success( 'Estado actualizado.' );
++		if ( $sistema === 'new' || !is_numeric($id) ) {
++			// ACTUALIZAR EN SHAREPOINT
++			try {
++				$api = new IPAO_Graph_API();
++				$json_content = $api->get_file_content_by_name($id, 'datos.json');
++				if ($json_content) {
++					$data = json_decode($json_content, true);
++					$data['estado'] = $estado;
++					$api->upload_file($id, 'datos.json', json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
++					wp_send_json_success( 'Estado actualizado en SharePoint.' );
++				}
++			} catch (Exception $e) {
++				wp_send_json_error( 'Error SharePoint: ' . $e->getMessage() );
++			}
+ 		} else {
+-			wp_send_json_error( 'No se pudo actualizar.' );
++			// ACTUALIZAR EN BD (Histórico)
++			global $wpdb;
++			$table = $wpdb->prefix . 'sistemas_inscripciones';
++			$map_est_inv = [ 'pendiente' => 0, 'enviado' => 1, 'firmado' => 2, 'confirmado' => 1 ];
++			$wpdb->update( $table, [ 'estado' => $map_est_inv[$estado] ?? 0 ], [ 'id' => $id ] );
++			wp_send_json_success( 'Estado actualizado en BD.' );
+ 		}
+ 	}
+ 
+@@ -148,4 +240,53 @@ class IPAO_Admin {
+ 			wp_send_json_error( 'No se pudo obtener la URL de la firma desde SharePoint.' );
+ 		}
+ 	}
++
++	/**
++	 * Maneja las acciones en lote desde la página de inscripciones.
++	 */
++	public static function handle_bulk_actions() {
++		if ( ! isset( $_GET['bulk_ids'] ) || ! isset( $_GET['action'] ) || $_GET['action'] === '-1' ) {
++			return;
++		}
++
++		if ( ! current_user_can( 'manage_options' ) ) {
++			return;
++		}
++
++		$ids    = array_map( 'sanitize_text_field', $_GET['bulk_ids'] );
++		$action = $_GET['action'];
++
++		global $wpdb;
++		$processed = 0;
++		$api = new IPAO_Graph_API();
++
++		foreach ( $ids as $id ) {
++			if ( strpos( $action, 'bulk-status-' ) === 0 ) {
++				$new_status = str_replace( 'bulk-status-', '', $action );
++				
++				if ( !is_numeric($id) ) {
++					// Actualizar SharePoint
++					$json_content = $api->get_file_content_by_name($id, 'datos.json');
++					if ($json_content) {
++						$data = json_decode($json_content, true);
++						$data['estado'] = $new_status;
++						$api->upload_file($id, 'datos.json', json_encode($data, JSON_PRETTY_PRINT));
++						$processed++;
++					}
++				} else {
++					// Actualizar BD
++					$table_old = $wpdb->prefix . 'sistemas_inscripciones';
++					$map_est = [ 'pendiente' => 0, 'enviado' => 1, 'firmado' => 2, 'confirmado' => 1 ];
++					$wpdb->update( $table_old, [ 'estado' => $map_est[$new_status] ?? 0 ], [ 'id' => $id ] );
++					$processed++;
++				}
++			}
++		}
++
++		if ( $processed > 0 ) {
++			echo '<div class="notice notice-success is-dismissible"><p>Se han procesado ' . $processed . ' inscripciones correctamente.</p></div>';
++		} else {
++			$inscripciones_error = "SharePoint no está configurado. Por favor, introduce las credenciales en la pestaña de Configuración.";
++		}
++	}
+ }
+diff --git a/includes/class-ajax.php b/includes/class-ajax.php
+index 76d4670..054e9da 100644
+--- a/includes/class-ajax.php
++++ b/includes/class-ajax.php
+@@ -172,7 +172,7 @@ class IPAO_Ajax {
+ 
+ 			// ─── Guardar referencia en WP (sin datos personales) ─────────
+ 			$ipao_table = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
+-			$wpdb->insert(
++			$inserted = $wpdb->insert(
+ 				$ipao_table,
+ 				[
+ 					'course_id'              => $area_formativa_id,
+@@ -187,6 +187,11 @@ class IPAO_Ajax {
+ 				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ]
+ 			);
+ 
++			if ( $inserted === false ) {
++				error_log( 'IpaoPunk Error: No se pudo insertar la inscripción en la base de datos. SQL Error: ' . $wpdb->last_error );
++				throw new Exception( 'Error al guardar la inscripción en la base de datos local. Tus datos en SharePoint están seguros.' );
++			}
++
+ 			wp_send_json_success( [
+ 				'message' => '¡Inscripción completada correctamente! Tus datos han sido guardados de forma segura.',
+ 			] );
+diff --git a/includes/class-graph-api.php b/includes/class-graph-api.php
+index 96f548b..98cd3dc 100644
+--- a/includes/class-graph-api.php
++++ b/includes/class-graph-api.php
+@@ -122,6 +122,26 @@ class IPAO_Graph_API {
+ 		return $data['id'];
+ 	}
+ 
++	/**
++	 * Obtiene el contenido de un archivo dentro de una carpeta por su nombre.
++	 */
++	public function get_file_content_by_name( $folder_id, $filename ) {
++		$token = $this->get_access_token();
++		$encoded_name = rawurlencode( $filename );
++		$url = "https://graph.microsoft.com/v1.0/drives/{$this->drive_id}/items/{$folder_id}:/{$encoded_name}:/content";
++		
++		$response = wp_remote_get( $url, [
++			'headers' => [ 'Authorization' => 'Bearer ' . $token ],
++			'timeout' => 30,
++		] );
++
++		if ( is_wp_error( $response ) ) {
++			return false;
++		}
++
++		return wp_remote_retrieve_body( $response );
++	}
++
+ 	/**
+ 	 * Obtiene un enlace web directo al archivo en SharePoint.
+ 	 */
+@@ -140,6 +160,32 @@ class IPAO_Graph_API {
+ 		return isset( $data['webUrl'] ) ? $data['webUrl'] : '';
+ 	}
+ 
++	/**
++	 * Obtiene la lista de subcarpetas (inscripciones) desde SharePoint.
++	 */
++	public function get_enrollment_folders() {
++		try {
++			$token = $this->get_access_token();
++			// Pedimos nombre e ID de las subcarpetas, limitado a 999 por ahora
++			$url   = "https://graph.microsoft.com/v1.0/drives/{$this->drive_id}/items/{$this->folder_id}/children?\$select=id,name,lastModifiedDateTime,webUrl&\$top=999";
++			
++			$response = wp_remote_get( $url, [
++				'headers' => [ 'Authorization' => 'Bearer ' . $token ],
++				'timeout' => 30,
++			] );
++
++			if ( is_wp_error( $response ) ) {
++				throw new Exception( 'Error listando carpetas: ' . $response->get_error_message() );
++			}
++
++			$data = json_decode( wp_remote_retrieve_body( $response ), true );
++			return isset( $data['value'] ) ? $data['value'] : [];
++		} catch ( Exception $e ) {
++			error_log( 'IpaoPunk Graph API Error: ' . $e->getMessage() );
++			return [];
++		}
++	}
++
+ 	/**
+ 	 * Comprueba que la conexión con Graph API y la carpeta son correctas.
+ 	 */
+diff --git a/includes/class-install.php b/includes/class-install.php
+index 4ce299e..42fbdd3 100644
+--- a/includes/class-install.php
++++ b/includes/class-install.php
+@@ -19,9 +19,9 @@ class IPAO_Install {
+ 		$table           = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
+ 		$charset_collate = $wpdb->get_charset_collate();
+ 
+-		$sql = "CREATE TABLE IF NOT EXISTS {$table} (
++		$sql = "CREATE TABLE {$table} (
+ 			id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+-			course_id bigint(20) UNSIGNED NOT NULL COMMENT 'ID del lp_course en WordPress',
++			course_id bigint(20) UNSIGNED NOT NULL COMMENT 'ID del curso en wp_sistemas_courses',
+ 			course_name varchar(500) NOT NULL DEFAULT '',
+ 			sharepoint_folder_id varchar(1000) DEFAULT '' COMMENT 'ID de la carpeta del alumno en SharePoint',
+ 			sharepoint_file_id varchar(1000) DEFAULT '' COMMENT 'ID del archivo datos.json en SharePoint',
+@@ -30,9 +30,9 @@ class IPAO_Install {
+ 			estado varchar(50) NOT NULL DEFAULT 'pendiente' COMMENT 'pendiente | confirmado | firmado',
+ 			fecha_inscripcion datetime NOT NULL,
+ 			notas text DEFAULT NULL,
+-			PRIMARY KEY (id),
+-			KEY course_id (course_id),
+-			KEY estado (estado)
++			PRIMARY KEY  (id),
++			KEY course_id  (course_id),
++			KEY estado  (estado)
+ 		) {$charset_collate};";
+ 
+ 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+diff --git a/ipaopunk.php b/ipaopunk.php
+index 54e757f..bb69c8d 100644
+--- a/ipaopunk.php
++++ b/ipaopunk.php
+@@ -3,7 +3,7 @@
+  * Plugin Name: IpaoPunk
+  * Plugin URI:  https://ipao.online
+  * Description: Gestión de inscripciones a cursos de LearnPress con almacenamiento de datos personales en SharePoint.
+- * Version:     1.0.0
++ * Version:     1.0.1
+  * Author:      e-sistemas
+  * Author URI:  https://e-sistemas.net
+  * Text Domain: ipaopunk
+@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
+ 	exit;
+ }
+ 
+-define( 'IPAO_VERSION', '1.0.0' );
++define( 'IPAO_VERSION', '1.0.1' );
+ define( 'IPAO_PLUGIN_FILE', __FILE__ );
+ define( 'IPAO_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
+ define( 'IPAO_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+
+commit 34dc0102f5338fd7b019b73624fba7c2a55d57be
+Author: SISTEMAS\acaballero <acaballero@e-sistemas.net>
+Date:   Thu May 7 08:20:36 2026 +0200
+
+    Update: cambiado plugin al que está dirigido
+---
+ admin/views/page-inscripciones.php | 259 +++++++++++++++++++++++++++++-----
+ includes/class-admin.php           |  64 ++++++++-
+ includes/class-ajax.php            | 210 +++++++++++++++++++++-------
+ includes/class-form.php            | 166 ++++++++++++++++++----
+ public/css/ipao-public.css         | 190 +++++++++++++++++--------
+ public/js/ipao-public.js           | 174 +++++++++++++++++------
+ public/views/form.php              | 276 ++++++++++++++++++++++++++++++++-----
+ 7 files changed, 1093 insertions(+), 246 deletions(-)
+
+diff --git a/admin/views/page-inscripciones.php b/admin/views/page-inscripciones.php
+index 8cfe4bb..70aa266 100644
+--- a/admin/views/page-inscripciones.php
++++ b/admin/views/page-inscripciones.php
+@@ -1,39 +1,224 @@
++<?php
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++?>
+ <div class="wrap">
+-	<h1>Inscripciones (IpaoPunk)</h1>
+-	<table class="wp-list-table widefat fixed striped">
+-		<thead>
+-			<tr>
+-				<th>ID</th>
+-				<th>Curso</th>
+-				<th>Carpeta SharePoint</th>
+-				<th>Estado</th>
+-				<th>Fecha</th>
+-			</tr>
+-		</thead>
+-		<tbody>
+-			<?php if ( empty( $inscripciones ) ) : ?>
+-				<tr>
+-					<td colspan="5">No hay inscripciones todavía.</td>
+-				</tr>
+-			<?php else : ?>
+-				<?php foreach ( $inscripciones as $inscripcion ) : ?>
+-					<tr>
+-						<td><?php echo esc_html( $inscripcion->id ); ?></td>
+-						<td><?php echo esc_html( $inscripcion->course_name ); ?></td>
+-						<td><?php echo esc_html( $inscripcion->sharepoint_folder_path ); ?></td>
+-						<td>
+-							<?php 
+-								if ( $inscripcion->estado === 'firmado' ) {
+-									echo '<span style="color:green; font-weight:bold;">Firmado</span>';
+-								} else {
+-									echo esc_html( ucfirst( $inscripcion->estado ) ); 
+-								}
+-							?>
+-						</td>
+-						<td><?php echo esc_html( $inscripcion->fecha_inscripcion ); ?></td>
+-					</tr>
+-				<?php endforeach; ?>
+-			<?php endif; ?>
+-		</tbody>
+-	</table>
++<h1 class="wp-heading-inline">Inscripciones (IpaoPunk)</h1>
++<hr class="wp-header-end">
++
++<?php
++global $wpdb;
++$table = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
++
++// ── Filtros ────────────────────────────────────────────────────────────────
++$filtro_estado = sanitize_text_field( $_GET['filtro_estado'] ?? '' );
++$search        = sanitize_text_field( $_GET['s'] ?? '' );
++
++$where  = '1=1';
++$params = [];
++if ( $filtro_estado ) {
++	$where .= $wpdb->prepare( ' AND estado = %s', $filtro_estado );
++}
++if ( $search ) {
++	$like   = '%' . $wpdb->esc_like( $search ) . '%';
++	$where .= $wpdb->prepare( ' AND course_name LIKE %s', $like );
++}
++
++$inscripciones = $wpdb->get_results( "SELECT * FROM {$table} WHERE {$where} ORDER BY fecha_inscripcion DESC" );
++
++// ── Totales por estado ─────────────────────────────────────────────────────
++$totales = $wpdb->get_results( "SELECT estado, COUNT(*) as total FROM {$table} GROUP BY estado", OBJECT_K );
++$total_all = array_sum( array_column( $wpdb->get_results( "SELECT COUNT(*) as total FROM {$table}" ), 'total' ) );
++?>
++
++<style>
++.ipao-stats { display:flex; gap:12px; margin:16px 0; flex-wrap:wrap; }
++.ipao-stat  { background:#fff; border:1px solid #ddd; border-radius:8px; padding:12px 20px; min-width:120px; text-align:center; }
++.ipao-stat strong { display:block; font-size:28px; line-height:1; }
++.ipao-stat span   { font-size:12px; color:#888; }
++.ipao-filters { display:flex; gap:8px; margin-bottom:16px; align-items:center; flex-wrap:wrap; }
++.ipao-badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; }
++.ipao-badge.pendiente  { color:#b45309; background:#fef9c3; }
++.ipao-badge.confirmado { color:#0369a1; background:#e0f2fe; }
++.ipao-badge.firmado    { color:#166534; background:#dcfce7; }
++.ipao-badge.cancelado  { color:#991b1b; background:#fee2e2; }
++.ipao-actions button   { cursor:pointer; }
++#ipao-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:99999; align-items:center; justify-content:center; }
++#ipao-modal-overlay.active { display:flex; }
++#ipao-modal { background:#fff; border-radius:8px; padding:24px; max-width:560px; width:90%; max-height:90vh; overflow:auto; position:relative; }
++#ipao-modal h2 { margin-top:0; }
++#ipao-modal-close { position:absolute; top:12px; right:16px; background:none; border:none; font-size:22px; cursor:pointer; color:#888; }
++#ipao-firma-img { max-width:100%; border:1px solid #ddd; border-radius:4px; margin-top:12px; }
++#ipao-modal-spinner { text-align:center; padding:20px; }
++.ipao-estado-select { padding:4px 8px; border-radius:4px; border:1px solid #ccc; }
++</style>
++
++<!-- Stats -->
++<div class="ipao-stats">
++	<div class="ipao-stat">
++		<strong><?php echo count( $wpdb->get_results( "SELECT id FROM {$table}" ) ); ?></strong>
++		<span>Total</span>
++	</div>
++	<?php foreach ( ['pendiente'=>'Pendientes','firmado'=>'Firmados','confirmado'=>'Confirmados','cancelado'=>'Cancelados'] as $est => $label ) : ?>
++	<div class="ipao-stat">
++		<strong><?php echo isset($totales[$est]) ? intval($totales[$est]->total) : 0; ?></strong>
++		<span><?php echo $label; ?></span>
++	</div>
++	<?php endforeach; ?>
++</div>
++
++<!-- Filtros -->
++<div class="ipao-filters">
++	<form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
++		<input type="hidden" name="page" value="ipaopunk">
++		<input type="search" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Buscar por curso…" class="regular-text">
++		<select name="filtro_estado">
++			<option value="">— Todos los estados —</option>
++			<?php foreach(['pendiente','firmado','confirmado','cancelado'] as $e): ?>
++			<option value="<?php echo $e; ?>" <?php selected($filtro_estado,$e); ?>><?php echo ucfirst($e); ?></option>
++			<?php endforeach; ?>
++		</select>
++		<button type="submit" class="button">Filtrar</button>
++		<?php if ($filtro_estado || $search): ?>
++		<a href="<?php echo admin_url('admin.php?page=ipaopunk'); ?>" class="button">Limpiar</a>
++		<?php endif; ?>
++	</form>
++	<span style="margin-left:auto;color:#888;"><?php echo count($inscripciones); ?> resultados</span>
++</div>
++
++<!-- Tabla -->
++<table class="wp-list-table widefat fixed striped" style="border-radius:8px;overflow:hidden;">
++	<thead>
++		<tr>
++			<th width="50">ID</th>
++			<th>Curso</th>
++			<th>Carpeta SharePoint</th>
++			<th width="140">Estado</th>
++			<th width="140">Fecha</th>
++			<th width="180">Acciones</th>
++		</tr>
++	</thead>
++	<tbody>
++	<?php if ( empty( $inscripciones ) ) : ?>
++		<tr>
++			<td colspan="6" style="text-align:center;padding:40px;color:#888;">
++				<span style="font-size:40px;">📋</span><br>
++				No hay inscripciones<?php echo ($filtro_estado||$search) ? ' con ese filtro' : ' todavía'; ?>.
++			</td>
++		</tr>
++	<?php else : ?>
++		<?php foreach ( $inscripciones as $ins ) : ?>
++		<tr id="ipao-row-<?php echo $ins->id; ?>">
++			<td><strong>#<?php echo esc_html($ins->id); ?></strong></td>
++			<td><strong><?php echo esc_html($ins->course_name); ?></strong></td>
++			<td style="font-size:12px;word-break:break-all;">
++				<?php echo $ins->sharepoint_folder_path ? '📁 ' . esc_html(substr($ins->sharepoint_folder_path,0,50)) : '<span style="color:#aaa">—</span>'; ?>
++			</td>
++			<td>
++				<select class="ipao-estado-select" data-id="<?php echo $ins->id; ?>">
++					<?php foreach(['pendiente','firmado','confirmado','cancelado'] as $e): ?>
++					<option value="<?php echo $e; ?>" <?php selected($ins->estado,$e); ?>><?php echo ucfirst($e); ?></option>
++					<?php endforeach; ?>
++				</select>
++			</td>
++			<td style="font-size:12px;"><?php echo esc_html(date_i18n('d/m/Y H:i', strtotime($ins->fecha_inscripcion))); ?></td>
++			<td class="ipao-actions">
++				<button class="button button-small ipao-ver-firma"
++					data-id="<?php echo $ins->id; ?>"
++					data-folder="<?php echo esc_attr($ins->sharepoint_folder_id); ?>"
++					data-curso="<?php echo esc_attr($ins->course_name); ?>">
++					🖊 Ver Firma
++				</button>
++			</td>
++		</tr>
++		<?php endforeach; ?>
++	<?php endif; ?>
++	</tbody>
++</table>
++
++<!-- Modal firma -->
++<div id="ipao-modal-overlay">
++	<div id="ipao-modal">
++		<button id="ipao-modal-close">✕</button>
++		<h2>🖊 Firma Digital</h2>
++		<p id="ipao-modal-curso" style="color:#555;margin-top:-8px;"></p>
++		<div id="ipao-modal-spinner"><span class="spinner is-active" style="float:none;margin:0 auto;display:block;"></span><br>Cargando desde SharePoint…</div>
++		<img id="ipao-firma-img" src="" alt="Firma" style="display:none;">
++		<div id="ipao-firma-error" style="display:none;color:#dc3232;"></div>
++		<hr>
++		<p style="font-size:12px;color:#888;margin-bottom:0;">Los datos personales se almacenan exclusivamente en SharePoint y no se guardan en WordPress.</p>
++	</div>
++</div>
++
++<script>
++jQuery(function($){
++	var nonce = '<?php echo wp_create_nonce('ipao_admin_action'); ?>';
++
++	// ── Cambio de estado ────────────────────────────────────────────────────
++	$(document).on('change', '.ipao-estado-select', function(){
++		var $sel = $(this);
++		var id   = $sel.data('id');
++		var est  = $sel.val();
++		$sel.prop('disabled', true);
++
++		$.post(ajaxurl, {
++			action: 'ipao_cambiar_estado',
++			nonce:  nonce,
++			id:     id,
++			estado: est
++		}, function(res){
++			$sel.prop('disabled', false);
++			if(res.success){
++				// Flash verde
++				$('#ipao-row-' + id).css('background','#f0fff4');
++				setTimeout(function(){ $('#ipao-row-' + id).css('background',''); }, 1500);
++			} else {
++				alert('Error: ' + (res.data || 'No se pudo actualizar.'));
++				location.reload();
++			}
++		}).fail(function(){
++			$sel.prop('disabled', false);
++			alert('Error de red.');
++		});
++	});
++
++	// ── Ver firma ───────────────────────────────────────────────────────────
++	$(document).on('click', '.ipao-ver-firma', function(){
++		var id     = $(this).data('id');
++		var folder = $(this).data('folder');
++		var curso  = $(this).data('curso');
++
++		$('#ipao-modal-curso').text(curso);
++		$('#ipao-firma-img').hide().attr('src','');
++		$('#ipao-firma-error').hide().text('');
++		$('#ipao-modal-spinner').show();
++		$('#ipao-modal-overlay').addClass('active');
++
++		$.post(ajaxurl, {
++			action:    'ipao_get_firma',
++			nonce:     nonce,
++			id:        id,
++			folder_id: folder
++		}, function(res){
++			$('#ipao-modal-spinner').hide();
++			if(res.success && res.data.url){
++				$('#ipao-firma-img').attr('src', res.data.url).show();
++			} else {
++				$('#ipao-firma-error').text(res.data || 'No se pudo obtener la firma.').show();
++			}
++		}).fail(function(){
++			$('#ipao-modal-spinner').hide();
++			$('#ipao-firma-error').text('Error de red al obtener la firma.').show();
++		});
++	});
++
++	// ── Cerrar modal ────────────────────────────────────────────────────────
++	$('#ipao-modal-close, #ipao-modal-overlay').on('click', function(e){
++		if(e.target === this){
++			$('#ipao-modal-overlay').removeClass('active');
++		}
++	});
++});
++</script>
+ </div>
+diff --git a/includes/class-admin.php b/includes/class-admin.php
+index 5d7dfa4..ac91e57 100644
+--- a/includes/class-admin.php
++++ b/includes/class-admin.php
+@@ -8,7 +8,9 @@ class IPAO_Admin {
+ 	public static function init() {
+ 		add_action( 'admin_menu', [ __CLASS__, 'add_menu_pages' ] );
+ 		add_action( 'admin_init', [ __CLASS__, 'handle_settings_save' ] );
+-		add_action( 'wp_ajax_ipao_test_connection', [ __CLASS__, 'handle_ajax_test_connection' ] );
++		add_action( 'wp_ajax_ipao_test_connection',  [ __CLASS__, 'handle_ajax_test_connection' ] );
++		add_action( 'wp_ajax_ipao_cambiar_estado',   [ __CLASS__, 'handle_ajax_cambiar_estado' ] );
++		add_action( 'wp_ajax_ipao_get_firma',        [ __CLASS__, 'handle_ajax_get_firma' ] );
+ 	}
+ 
+ 	public static function add_menu_pages() {
+@@ -86,4 +88,64 @@ class IPAO_Admin {
+ 			wp_send_json_error( $result['message'] );
+ 		}
+ 	}
++
++	public static function handle_ajax_cambiar_estado() {
++		check_ajax_referer( 'ipao_admin_action', 'nonce' );
++		if ( ! current_user_can( 'manage_options' ) ) {
++			wp_send_json_error( 'Permiso denegado.' );
++		}
++
++		global $wpdb;
++		$table   = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
++		$id      = intval( $_POST['id'] ?? 0 );
++		$estados = [ 'pendiente', 'confirmado', 'firmado', 'cancelado' ];
++		$estado  = sanitize_text_field( $_POST['estado'] ?? '' );
++
++		if ( ! $id || ! in_array( $estado, $estados, true ) ) {
++			wp_send_json_error( 'Datos inválidos.' );
++		}
++
++		$updated = $wpdb->update(
++			$table,
++			[ 'estado' => $estado ],
++			[ 'id'     => $id ],
++			[ '%s' ],
++			[ '%d' ]
++		);
++
++		if ( $updated !== false ) {
++			wp_send_json_success( 'Estado actualizado.' );
++		} else {
++			wp_send_json_error( 'No se pudo actualizar.' );
++		}
++	}
++
++	public static function handle_ajax_get_firma() {
++		check_ajax_referer( 'ipao_admin_action', 'nonce' );
++		if ( ! current_user_can( 'manage_options' ) ) {
++			wp_send_json_error( 'Permiso denegado.' );
++		}
++
++		global $wpdb;
++		$table     = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
++		$id        = intval( $_POST['id'] ?? 0 );
++		$inscripcion = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ) );
++
++		if ( ! $inscripcion || empty( $inscripcion->sharepoint_firma_id ) ) {
++			wp_send_json_error( 'No se encontró la firma para esta inscripción.' );
++		}
++
++		$api = new IPAO_Graph_API();
++		if ( ! $api->is_configured() ) {
++			wp_send_json_error( 'SharePoint no está configurado.' );
++		}
++
++		$url = $api->get_file_web_url( $inscripcion->sharepoint_firma_id );
++
++		if ( $url ) {
++			wp_send_json_success( [ 'url' => $url ] );
++		} else {
++			wp_send_json_error( 'No se pudo obtener la URL de la firma desde SharePoint.' );
++		}
++	}
+ }
+diff --git a/includes/class-ajax.php b/includes/class-ajax.php
+index e3b7ab6..76d4670 100644
+--- a/includes/class-ajax.php
++++ b/includes/class-ajax.php
+@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
+ class IPAO_Ajax {
+ 
+ 	public static function init() {
+-		add_action( 'wp_ajax_ipao_submit_form', [ __CLASS__, 'handle_form_submission' ] );
++		add_action( 'wp_ajax_ipao_submit_form',        [ __CLASS__, 'handle_form_submission' ] );
+ 		add_action( 'wp_ajax_nopriv_ipao_submit_form', [ __CLASS__, 'handle_form_submission' ] );
+ 	}
+ 
+@@ -14,76 +14,182 @@ class IPAO_Ajax {
+ 		check_ajax_referer( 'ipao_form_nonce', 'nonce' );
+ 
+ 		try {
+-			$curso_id = isset( $_POST['curso_id'] ) ? intval( $_POST['curso_id'] ) : 0;
+-			$nombre   = isset( $_POST['nombre'] ) ? sanitize_text_field( $_POST['nombre'] ) : '';
+-			$apellidos= isset( $_POST['apellidos'] ) ? sanitize_text_field( $_POST['apellidos'] ) : '';
+-			$dni      = isset( $_POST['dni'] ) ? sanitize_text_field( $_POST['dni'] ) : '';
+-			$email    = isset( $_POST['email'] ) ? sanitize_email( $_POST['email'] ) : '';
+-			$telefono = isset( $_POST['telefono'] ) ? sanitize_text_field( $_POST['telefono'] ) : '';
+-			$firma    = isset( $_POST['firma'] ) ? $_POST['firma'] : '';
+-
+-			if ( ! $curso_id || ! $nombre || ! $apellidos || ! $dni || ! $email || ! $firma ) {
+-				throw new Exception( 'Por favor, rellena todos los campos requeridos y firma el documento.' );
++			// ─── Datos del curso ───────────────────────────────────────────
++			$area_formativa_id = intval( $_POST['area_formativa_id'] ?? 0 );
++			$curso_id          = intval( $_POST['curso_id'] ?? 0 );
++			$formacion_id      = intval( $_POST['formacion_id'] ?? 0 );
++			$materia_ids       = array_map( 'intval', (array) ( $_POST['materia_ids'] ?? [] ) );
++
++			// ─── Datos del alumno ──────────────────────────────────────────
++			$nombre       = sanitize_text_field( $_POST['nombre'] ?? '' );
++			$apellidos    = sanitize_text_field( $_POST['apellidos'] ?? '' );
++			$dni          = strtoupper( sanitize_text_field( $_POST['dni'] ?? '' ) );
++			$fnacimiento  = sanitize_text_field( $_POST['fnacimiento'] ?? '' );
++			$email        = sanitize_email( $_POST['email'] ?? '' );
++			$direccion    = sanitize_text_field( $_POST['direccion'] ?? '' );
++			$localidad    = sanitize_text_field( $_POST['localidad'] ?? '' );
++			$provincia    = sanitize_text_field( $_POST['provincia'] ?? '' );
++			$cp           = sanitize_text_field( $_POST['cp'] ?? '' );
++			$tlfmovil     = sanitize_text_field( $_POST['tlfmovil'] ?? '' );
++			$tlffijo      = sanitize_text_field( $_POST['tlffijo'] ?? '' );
++			$menor_edad   = ! empty( $_POST['menor_edad'] );
++
++			// ─── Datos del tutor (si es menor) ────────────────────────────
++			$tutor = [];
++			if ( $menor_edad ) {
++				$tutor = [
++					'nombre'    => sanitize_text_field( $_POST['tutor_nombre'] ?? '' ),
++					'apellidos' => sanitize_text_field( $_POST['tutor_apellidos'] ?? '' ),
++					'dni'       => strtoupper( sanitize_text_field( $_POST['tutor_dni'] ?? '' ) ),
++					'tlfmovil'  => sanitize_text_field( $_POST['tutor_tlfmovil'] ?? '' ),
++					'email'     => sanitize_email( $_POST['tutor_email'] ?? '' ),
++				];
+ 			}
+ 
+-			if ( strpos( $firma, 'data:image/png;base64,' ) !== 0 ) {
+-				throw new Exception( 'Formato de firma inválido.' );
++			// ─── Modalidad y forma de pago ────────────────────────────────
++			$modalidad  = sanitize_text_field( $_POST['modalidad'] ?? '' );
++			$forma_pago = sanitize_text_field( $_POST['forma_pago'] ?? '' );
++
++			// Datos bancarios (solo si es domiciliación)
++			$banco = [];
++			if ( $forma_pago === 'domiciliacion' ) {
++				$banco = [
++					'nombre_titular'    => sanitize_text_field( $_POST['banco_nombre'] ?? '' ),
++					'apellidos_titular' => sanitize_text_field( $_POST['banco_apellidos'] ?? '' ),
++					'direccion'         => sanitize_text_field( $_POST['banco_direccion'] ?? '' ),
++					'localidad'         => sanitize_text_field( $_POST['banco_localidad'] ?? '' ),
++					'provincia'         => sanitize_text_field( $_POST['banco_provincia'] ?? '' ),
++					'cp'                => sanitize_text_field( $_POST['banco_cp'] ?? '' ),
++					'entidad'           => sanitize_text_field( $_POST['banco_entidad'] ?? '' ),
++					'numero_cuenta'     => sanitize_text_field( $_POST['banco_cuenta'] ?? '' ),
++				];
+ 			}
+-			
+-			$firma_data = base64_decode( substr( $firma, strpos( $firma, ',' ) + 1 ) );
+-			if ( ! $firma_data ) {
+-				throw new Exception( 'Datos de firma vacíos.' );
++
++			// ─── Datos del contrato ───────────────────────────────────────
++			$fecha_inicio      = sanitize_text_field( $_POST['fecha_inicio'] ?? '' );
++			$fecha_fin         = sanitize_text_field( $_POST['fecha_fin'] ?? '' );
++			$fecha_certificado = sanitize_text_field( $_POST['fecha_certificado'] ?? '' );
++			$observaciones     = sanitize_textarea_field( $_POST['observaciones'] ?? '' );
++
++			// ─── Firma ────────────────────────────────────────────────────
++			$firma = $_POST['firma'] ?? '';
++
++			// ─── Validación mínima ────────────────────────────────────────
++			$errors = [];
++			if ( ! $nombre )         $errors[] = 'El nombre es obligatorio.';
++			if ( ! $apellidos )      $errors[] = 'Los apellidos son obligatorios.';
++			if ( ! $dni )            $errors[] = 'El DNI/NIE es obligatorio.';
++			if ( ! is_email( $email ) ) $errors[] = 'El email no es válido.';
++			if ( ! $tlfmovil )       $errors[] = 'El teléfono móvil es obligatorio.';
++			if ( ! $area_formativa_id ) $errors[] = 'Debes seleccionar un área formativa.';
++			if ( ! $firma || strpos( $firma, 'data:image/png;base64,' ) !== 0 ) {
++				$errors[] = 'La firma digital es obligatoria.';
+ 			}
+ 
+-			$curso_title = get_the_title( $curso_id );
+-			if ( ! $curso_title ) {
+-				throw new Exception( 'El curso seleccionado no existe.' );
++			if ( ! empty( $errors ) ) {
++				throw new Exception( implode( ' ', $errors ) );
+ 			}
+ 
++			$firma_binary = base64_decode( substr( $firma, strpos( $firma, ',' ) + 1 ) );
++			if ( ! $firma_binary ) {
++				throw new Exception( 'Datos de firma inválidos.' );
++			}
++
++			// ─── Nombres legibles de los cursos ───────────────────────────
++			global $wpdb;
++			$table = $wpdb->prefix . 'sistemas_courses';
++
++			$area_nombre      = $wpdb->get_var( $wpdb->prepare( "SELECT name FROM {$table} WHERE id = %d", $area_formativa_id ) ) ?? '';
++			$curso_nombre     = $curso_id ? ( $wpdb->get_var( $wpdb->prepare( "SELECT name FROM {$table} WHERE id = %d", $curso_id ) ) ?? '' ) : '';
++			$formacion_nombre = $formacion_id ? ( $wpdb->get_var( $wpdb->prepare( "SELECT name FROM {$table} WHERE id = %d", $formacion_id ) ) ?? '' ) : '';
++
++			$materias_nombres = [];
++			if ( ! empty( $materia_ids ) ) {
++				$format = implode( ',', array_fill( 0, count( $materia_ids ), '%d' ) );
++				$materias_nombres = $wpdb->get_col(
++					$wpdb->prepare( "SELECT name FROM {$table} WHERE id IN ({$format})", $materia_ids )
++				);
++			}
++
++			// ─── Verificar configuración Graph API ────────────────────────
+ 			$api = new IPAO_Graph_API();
+ 			if ( ! $api->is_configured() ) {
+-				throw new Exception( 'El sistema no está configurado correctamente (Graph API).' );
++				throw new Exception( 'El sistema de almacenamiento no está configurado. Contacta con el administrador.' );
+ 			}
+ 
+-			$folder_name = sanitize_file_name( "{$dni}_{$nombre}_{$apellidos}" );
+-			$folder_id = $api->create_folder( $folder_name );
++			// ─── Crear carpeta en SharePoint ──────────────────────────────
++			$folder_name = sanitize_file_name( $dni . '_' . $nombre . '_' . $apellidos . '_' . date( 'Ymd_His' ) );
++			$folder_id   = $api->create_folder( $folder_name );
+ 
+-			$json_data = json_encode( [
+-				'curso_id'  => $curso_id,
+-				'curso'     => $curso_title,
+-				'nombre'    => $nombre,
+-				'apellidos' => $apellidos,
+-				'dni'       => $dni,
+-				'email'     => $email,
+-				'telefono'  => $telefono,
+-				'fecha'     => current_time( 'mysql' ),
+-			], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE );
++			// ─── Construir JSON con todos los datos personales ────────────
++			$datos = [
++				'curso' => [
++					'area_formativa_id'   => $area_formativa_id,
++					'area_formativa'      => $area_nombre,
++					'curso_id'            => $curso_id,
++					'curso'               => $curso_nombre,
++					'formacion_id'        => $formacion_id,
++					'formacion'           => $formacion_nombre,
++					'materia_ids'         => $materia_ids,
++					'materias'            => $materias_nombres,
++				],
++				'alumno' => [
++					'nombre'      => $nombre,
++					'apellidos'   => $apellidos,
++					'nombre_completo' => $nombre . ' ' . $apellidos,
++					'dni'         => $dni,
++					'fnacimiento' => $fnacimiento,
++					'email'       => $email,
++					'direccion'   => $direccion,
++					'localidad'   => $localidad,
++					'provincia'   => $provincia,
++					'cp'          => $cp,
++					'tlfmovil'    => $tlfmovil,
++					'tlffijo'     => $tlffijo,
++					'menor_edad'  => $menor_edad,
++				],
++				'tutor'   => $tutor,
++				'pago'    => [
++					'modalidad'  => $modalidad,
++					'forma_pago' => $forma_pago,
++					'banco'      => $banco,
++				],
++				'contrato' => [
++					'fecha_inicio'      => $fecha_inicio,
++					'fecha_fin'         => $fecha_fin,
++					'fecha_certificado' => $fecha_certificado,
++					'observaciones'     => $observaciones,
++				],
++				'meta' => [
++					'fecha_inscripcion' => current_time( 'c' ),
++					'ip'                => $_SERVER['REMOTE_ADDR'] ?? '',
++				],
++			];
+ 
+-			$file_id = $api->upload_file( $folder_id, 'datos.json', $json_data );
+-			$firma_id = $api->upload_file( $folder_id, 'firma.png', $firma_data, 'image/png' );
++			// ─── Subir datos.json y firma.png a SharePoint ────────────────
++			$file_id  = $api->upload_file( $folder_id, 'datos.json', json_encode( $datos, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) );
++			$firma_id = $api->upload_file( $folder_id, 'firma.png', $firma_binary, 'image/png' );
+ 
+-			global $wpdb;
+-			$table = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
+-			$inserted = $wpdb->insert(
+-				$table,
++			// ─── Guardar referencia en WP (sin datos personales) ─────────
++			$ipao_table = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
++			$wpdb->insert(
++				$ipao_table,
+ 				[
+-					'course_id'             => $curso_id,
+-					'course_name'           => $curso_title,
+-					'sharepoint_folder_id'  => $folder_id,
+-					'sharepoint_file_id'    => $file_id,
+-					'sharepoint_firma_id'   => $firma_id,
+-					'sharepoint_folder_path'=> $folder_name,
+-					'estado'                => 'firmado',
+-					'fecha_inscripcion'     => current_time( 'mysql' ),
++					'course_id'              => $area_formativa_id,
++					'course_name'            => $area_nombre . ( $curso_nombre ? ' › ' . $curso_nombre : '' ) . ( $formacion_nombre ? ' › ' . $formacion_nombre : '' ),
++					'sharepoint_folder_id'   => $folder_id,
++					'sharepoint_file_id'     => $file_id,
++					'sharepoint_firma_id'    => $firma_id,
++					'sharepoint_folder_path' => $folder_name,
++					'estado'                 => 'firmado',
++					'fecha_inscripcion'      => current_time( 'mysql' ),
+ 				],
+ 				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ]
+ 			);
+ 
+-			if ( ! $inserted ) {
+-				throw new Exception( 'Error al guardar la inscripción localmente, pero se subió a SharePoint.' );
+-			}
+-
+-			wp_send_json_success( [ 'message' => 'Inscripción completada y guardada correctamente en SharePoint.' ] );
++			wp_send_json_success( [
++				'message' => '¡Inscripción completada correctamente! Tus datos han sido guardados de forma segura.',
++			] );
+ 
+ 		} catch ( Exception $e ) {
+ 			wp_send_json_error( [ 'message' => $e->getMessage() ] );
+diff --git a/includes/class-form.php b/includes/class-form.php
+index 78c4a19..98ed753 100644
+--- a/includes/class-form.php
++++ b/includes/class-form.php
+@@ -7,14 +7,38 @@ class IPAO_Form {
+ 
+ 	public static function init() {
+ 		add_shortcode( 'ipao_formulario', [ __CLASS__, 'render_shortcode' ] );
+-		add_action( 'wp_enqueue_scripts', [ __CLASS__, 'enqueue_scripts' ] );
+-	}
++		add_action( 'wp_enqueue_scripts', [ __CLASS__, 'register_assets' ] );
+ 
+-	public static function enqueue_scripts() {
+-		wp_register_style( 'ipao-form-css', IPAO_PLUGIN_URL . 'public/css/ipao-public.css', [], IPAO_VERSION );
+-		wp_register_script( 'ipao-signature-pad', 'https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js', [], '4.1.7', true );
+-		wp_register_script( 'ipao-form-js', IPAO_PLUGIN_URL . 'public/js/ipao-public.js', [ 'jquery', 'ipao-signature-pad' ], IPAO_VERSION, true );
++		// AJAX for cascading course selects (public)
++		add_action( 'wp_ajax_ipao_get_cursos',    [ __CLASS__, 'ajax_get_cursos' ] );
++		add_action( 'wp_ajax_nopriv_ipao_get_cursos', [ __CLASS__, 'ajax_get_cursos' ] );
++		add_action( 'wp_ajax_ipao_get_formacion', [ __CLASS__, 'ajax_get_formacion' ] );
++		add_action( 'wp_ajax_nopriv_ipao_get_formacion', [ __CLASS__, 'ajax_get_formacion' ] );
++		add_action( 'wp_ajax_ipao_get_materias',  [ __CLASS__, 'ajax_get_materias' ] );
++		add_action( 'wp_ajax_nopriv_ipao_get_materias',  [ __CLASS__, 'ajax_get_materias' ] );
++	}
+ 
++	public static function register_assets() {
++		wp_register_style(
++			'ipao-form-css',
++			IPAO_PLUGIN_URL . 'public/css/ipao-public.css',
++			[],
++			IPAO_VERSION
++		);
++		wp_register_script(
++			'ipao-signature-pad',
++			'https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js',
++			[],
++			'4.1.7',
++			true
++		);
++		wp_register_script(
++			'ipao-form-js',
++			IPAO_PLUGIN_URL . 'public/js/ipao-public.js',
++			[ 'jquery', 'ipao-signature-pad' ],
++			IPAO_VERSION,
++			true
++		);
+ 		wp_localize_script( 'ipao-form-js', 'ipao_ajax', [
+ 			'url'   => admin_url( 'admin-ajax.php' ),
+ 			'nonce' => wp_create_nonce( 'ipao_form_nonce' ),
+@@ -25,31 +49,125 @@ class IPAO_Form {
+ 		wp_enqueue_style( 'ipao-form-css' );
+ 		wp_enqueue_script( 'ipao-form-js' );
+ 
+-		$cursos = self::get_active_courses();
++		global $wpdb;
++		$table    = $wpdb->prefix . 'sistemas_courses';
++		$areas    = $wpdb->get_results(
++			$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", 0 ),
++			ARRAY_A
++		);
++
++		// Pre-load level 2 (cursos) and 3 (formacion) for the first area
++		$cursos    = [];
++		$formacion = [];
++		$materias  = [];
++
++		if ( ! empty( $areas ) ) {
++			$cursos = $wpdb->get_results(
++				$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", $areas[0]['id'] ),
++				ARRAY_A
++			);
++			if ( ! empty( $cursos ) ) {
++				$formacion = $wpdb->get_results(
++					$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", $cursos[0]['id'] ),
++					ARRAY_A
++				);
++				if ( ! empty( $formacion ) ) {
++					$materias = $wpdb->get_results(
++						$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", $formacion[0]['id'] ),
++						ARRAY_A
++					);
++				}
++			}
++		}
++
++		$provincias = self::get_provincias();
+ 
+ 		ob_start();
+ 		include IPAO_PLUGIN_PATH . 'public/views/form.php';
+ 		return ob_get_clean();
+ 	}
+ 
+-	private static function get_active_courses() {
+-		$args = [
+-			'post_type'      => 'lp_course',
+-			'post_status'    => 'publish',
+-			'posts_per_page' => -1,
+-			'orderby'        => 'title',
+-			'order'          => 'ASC',
+-		];
+-		$query = new WP_Query( $args );
+-		$cursos = [];
+-		if ( $query->have_posts() ) {
+-			foreach ( $query->posts as $post ) {
+-				$cursos[] = [
+-					'id'    => $post->ID,
+-					'title' => $post->post_title,
+-				];
++	// ─── Cascade AJAX handlers ────────────────────────────────────────────────
++
++	public static function ajax_get_cursos() {
++		check_ajax_referer( 'ipao_form_nonce', 'nonce' );
++		global $wpdb;
++		$table  = $wpdb->prefix . 'sistemas_courses';
++		$area   = intval( $_POST['area_id'] ?? 0 );
++
++		$data = [];
++		$data['cursos'] = $wpdb->get_results(
++			$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", $area ),
++			ARRAY_A
++		);
++		$data['formacion'] = [];
++		$data['materias']  = [];
++
++		if ( ! empty( $data['cursos'] ) ) {
++			$data['formacion'] = $wpdb->get_results(
++				$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", $data['cursos'][0]['id'] ),
++				ARRAY_A
++			);
++			if ( ! empty( $data['formacion'] ) ) {
++				$data['materias'] = $wpdb->get_results(
++					$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", $data['formacion'][0]['id'] ),
++					ARRAY_A
++				);
+ 			}
+ 		}
+-		return $cursos;
++
++		wp_send_json_success( $data );
++	}
++
++	public static function ajax_get_formacion() {
++		check_ajax_referer( 'ipao_form_nonce', 'nonce' );
++		global $wpdb;
++		$table   = $wpdb->prefix . 'sistemas_courses';
++		$curso   = intval( $_POST['curso_id'] ?? 0 );
++
++		$data = [];
++		$data['formacion'] = $wpdb->get_results(
++			$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", $curso ),
++			ARRAY_A
++		);
++		$data['materias'] = [];
++
++		if ( ! empty( $data['formacion'] ) ) {
++			$data['materias'] = $wpdb->get_results(
++				$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", $data['formacion'][0]['id'] ),
++				ARRAY_A
++			);
++		}
++
++		wp_send_json_success( $data );
++	}
++
++	public static function ajax_get_materias() {
++		check_ajax_referer( 'ipao_form_nonce', 'nonce' );
++		global $wpdb;
++		$table      = $wpdb->prefix . 'sistemas_courses';
++		$formacion  = intval( $_POST['formacion_id'] ?? 0 );
++
++		$materias = $wpdb->get_results(
++			$wpdb->prepare( "SELECT id, name FROM {$table} WHERE top_category = %d ORDER BY name", $formacion ),
++			ARRAY_A
++		);
++
++		wp_send_json_success( [ 'materias' => $materias ] );
++	}
++
++	// ─── Helpers ──────────────────────────────────────────────────────────────
++
++	private static function get_provincias() {
++		return [
++			'Álava','Albacete','Alicante','Almería','Asturias','Ávila','Badajoz',
++			'Barcelona','Burgos','Cáceres','Cádiz','Cantabria','Castellón',
++			'Ciudad Real','Córdoba','Cuenca','Gerona','Granada','Guadalajara',
++			'Guipúzcoa','Huelva','Huesca','Islas Baleares','Jaén','La Coruña',
++			'La Rioja','Las Palmas','León','Lérida','Lugo','Madrid','Málaga',
++			'Murcia','Navarra','Orense','Palencia','Pontevedra','Salamanca',
++			'Santa Cruz de Tenerife','Segovia','Sevilla','Soria','Tarragona',
++			'Teruel','Toledo','Valencia','Valladolid','Vizcaya','Zamora','Zaragoza',
++		];
+ 	}
+ }
+diff --git a/public/css/ipao-public.css b/public/css/ipao-public.css
+index 5ef947b..a976b25 100644
+--- a/public/css/ipao-public.css
++++ b/public/css/ipao-public.css
+@@ -1,79 +1,155 @@
+-.ipao-form-container {
+-	max-width: 600px;
++/* ══════════════════════════════════════════════════════════════
++   IpaoPunk — Public Form Styles
++   ══════════════════════════════════════════════════════════════ */
++
++#ipao-form-container {
++	max-width: 820px;
+ 	margin: 0 auto;
+-	padding: 20px;
+-	background: #f9f9f9;
++	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
++	color: #333;
++}
++
++/* Messages */
++#ipao-messages {
++	padding: 14px 18px;
+ 	border-radius: 8px;
+-	box-shadow: 0 2px 10px rgba(0,0,0,0.1);
++	margin-bottom: 20px;
++	font-weight: 500;
++	display: none;
++}
++#ipao-messages.ipao-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
++#ipao-messages.ipao-error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
++
++/* Sections */
++.ipao-section {
++	background: #fff;
++	border: 1px solid #e0e0e0;
++	border-radius: 10px;
++	padding: 24px;
++	margin-bottom: 24px;
++	box-shadow: 0 2px 6px rgba(0,0,0,.04);
+ }
+-.ipao-form-row {
+-	margin-bottom: 15px;
++.ipao-section-title {
++	font-size: 1.05rem;
++	font-weight: 700;
++	margin: 0 0 20px;
++	padding-bottom: 10px;
++	border-bottom: 2px solid #f0f0f0;
++	color: #1a1a2e;
+ }
+-.ipao-form-row label {
++
++/* Grid layouts */
++.ipao-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
++.ipao-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
++@media (max-width: 600px) {
++	.ipao-row-2, .ipao-row-3 { grid-template-columns: 1fr; }
++}
++
++/* Fields */
++.ipao-field { margin-bottom: 16px; }
++.ipao-field label {
+ 	display: block;
++	font-size: .88rem;
++	font-weight: 600;
+ 	margin-bottom: 5px;
+-	font-weight: bold;
++	color: #444;
+ }
+-.ipao-form-row input[type="text"],
+-.ipao-form-row input[type="email"],
+-.ipao-form-row input[type="tel"],
+-.ipao-form-row select {
++.ipao-field .required { color: #c0392b; }
++.ipao-field input[type="text"],
++.ipao-field input[type="email"],
++.ipao-field input[type="tel"],
++.ipao-field input[type="date"],
++.ipao-field input[type="number"],
++.ipao-field select,
++.ipao-field textarea {
+ 	width: 100%;
+-	padding: 8px;
++	padding: 9px 12px;
+ 	border: 1px solid #ccc;
+-	border-radius: 4px;
++	border-radius: 6px;
++	font-size: .95rem;
++	background: #fafafa;
++	box-sizing: border-box;
++	transition: border-color .2s, box-shadow .2s;
+ }
+-.ipao-signature-wrapper {
+-	border: 1px solid #ccc;
++.ipao-field input:focus,
++.ipao-field select:focus,
++.ipao-field textarea:focus {
++	outline: none;
++	border-color: #0073aa;
++	box-shadow: 0 0 0 3px rgba(0,115,170,.15);
+ 	background: #fff;
+-	border-radius: 4px;
+-	margin-bottom: 5px;
+ }
+-.ipao-signature-wrapper canvas {
++.ipao-field textarea { resize: vertical; min-height: 90px; }
++
++/* Checkboxes */
++.ipao-checkboxes { display: flex; flex-wrap: wrap; gap: 10px; }
++.ipao-checkbox-label {
++	display: flex;
++	align-items: center;
++	gap: 6px;
++	font-size: .9rem;
++	cursor: pointer;
++	padding: 5px 10px;
++	border: 1px solid #ddd;
++	border-radius: 6px;
++	background: #fafafa;
++	transition: background .15s;
++}
++.ipao-checkbox-label:hover { background: #eef5fb; }
++.ipao-checkbox-label input[type="checkbox"] { width: auto; }
++.ipao-checkbox-single { display: flex; align-items: center; gap: 8px; font-size: .92rem; cursor: pointer; }
++.ipao-checkbox-single input { width: auto; }
++.ipao-no-materias { color: #888; font-size: .88rem; }
++
++/* Radio group */
++.ipao-radio-group { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
++.ipao-radio-group label { display: flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 400; }
++.ipao-radio-group input[type="radio"] { width: auto; }
++
++/* Firma / Signature */
++.ipao-firma-desc { color: #666; font-size: .88rem; margin-bottom: 10px; }
++.ipao-canvas-wrapper {
++	border: 2px solid #ccc;
++	border-radius: 8px;
++	background: #fff;
++	margin-bottom: 10px;
++	overflow: hidden;
++	cursor: crosshair;
++}
++.ipao-canvas-wrapper canvas {
++	display: block;
+ 	width: 100%;
+ 	height: 200px;
+-	display: block;
+ 	touch-action: none;
+ }
+-#ipao-clear-signature {
+-	background: #eee;
+-	border: 1px solid #ccc;
+-	padding: 5px 10px;
+-	cursor: pointer;
+-	font-size: 12px;
+-	border-radius: 3px;
+-}
+-#ipao-submit-btn {
++.ipao-error { color: #c0392b; font-size: .85rem; margin-top: 4px; }
++
++/* Buttons */
++.ipao-btn-primary {
+ 	background: #0073aa;
+ 	color: #fff;
+ 	border: none;
+-	padding: 10px 20px;
+-	font-size: 16px;
++	padding: 12px 30px;
++	font-size: 1rem;
++	font-weight: 600;
++	border-radius: 8px;
+ 	cursor: pointer;
+-	border-radius: 4px;
+-}
+-#ipao-submit-btn:hover {
+-	background: #005177;
+-}
+-#ipao-submit-btn:disabled {
+-	background: #ccc;
+-	cursor: not-allowed;
++	transition: background .2s, transform .1s;
+ }
+-#ipao-form-messages {
+-	margin-top: 15px;
+-	padding: 10px;
+-	border-radius: 4px;
+-	display: none;
+-}
+-#ipao-form-messages.success {
+-	background: #d4edda;
+-	color: #155724;
+-	border: 1px solid #c3e6cb;
+-	display: block;
+-}
+-#ipao-form-messages.error {
+-	background: #f8d7da;
+-	color: #721c24;
+-	border: 1px solid #f5c6cb;
+-	display: block;
++.ipao-btn-primary:hover { background: #005a87; transform: translateY(-1px); }
++.ipao-btn-primary:disabled { background: #aaa; cursor: not-allowed; transform: none; }
++
++.ipao-btn-secondary {
++	background: #f0f0f0;
++	color: #444;
++	border: 1px solid #ccc;
++	padding: 7px 16px;
++	font-size: .88rem;
++	border-radius: 6px;
++	cursor: pointer;
++	transition: background .2s;
+ }
++.ipao-btn-secondary:hover { background: #e0e0e0; }
++
++.ipao-submit-wrapper { text-align: center; padding-top: 10px; }
++.ipao-privacidad { font-size: .88rem; }
+diff --git a/public/js/ipao-public.js b/public/js/ipao-public.js
+index d957bf2..226fb1d 100644
+--- a/public/js/ipao-public.js
++++ b/public/js/ipao-public.js
+@@ -1,68 +1,164 @@
+-jQuery(document).ready(function($) {
+-	if ($('#ipao-signature-pad').length === 0) return;
++jQuery(document).ready(function ($) {
++
++	if ($('#ipao-inscripcion-form').length === 0) return;
++
++	// ── Inicializar Signature Pad ────────────────────────────────────────────
++	var canvas = document.getElementById('ipao-firma-canvas');
+ 
+-	var canvas = document.getElementById('ipao-signature-pad');
+-	
+-	// Adjust canvas resolution for high-DPI displays
+ 	function resizeCanvas() {
+-		var ratio =  Math.max(window.devicePixelRatio || 1, 1);
+-		canvas.width = canvas.offsetWidth * ratio;
+-		canvas.height = canvas.offsetHeight * ratio;
+-		canvas.getContext("2d").scale(ratio, ratio);
++		var ratio = Math.max(window.devicePixelRatio || 1, 1);
++		var wrapper = canvas.parentElement;
++		canvas.width  = wrapper.offsetWidth * ratio;
++		canvas.height = 200 * ratio;
++		canvas.getContext('2d').scale(ratio, ratio);
++		signaturePad.clear();
+ 	}
+-	window.addEventListener("resize", resizeCanvas);
+-	resizeCanvas();
+ 
+ 	var signaturePad = new SignaturePad(canvas, {
+-		backgroundColor: 'rgb(255, 255, 255)'
++		backgroundColor: 'rgb(255,255,255)',
++		penColor: 'rgb(0,0,0)'
+ 	});
+ 
+-	$('#ipao-clear-signature').on('click', function() {
++	window.addEventListener('resize', resizeCanvas);
++	resizeCanvas();
++
++	$('#ipao-clear-signature').on('click', function () {
+ 		signaturePad.clear();
+ 	});
+ 
+-	$('#ipao-inscripcion-form').on('submit', function(e) {
++	// ── Mostrar/ocultar datos tutor ──────────────────────────────────────────
++	$('#ipao_menor_edad').on('change', function () {
++		$('#ipao-tutor-section').toggle(this.checked);
++	});
++
++	// ── Mostrar/ocultar datos bancarios ─────────────────────────────────────
++	$('input[name="forma_pago"]').on('change', function () {
++		$('#ipao-banco-section').toggle($(this).val() === 'domiciliacion');
++	});
++
++	// ── Selects en cascada ───────────────────────────────────────────────────
++	$('#ipao_area_formativa').on('change', function () {
++		var area_id = $(this).val();
++		if (!area_id) return;
++
++		$.post(ipao_ajax.url, {
++			action: 'ipao_get_cursos',
++			nonce:  ipao_ajax.nonce,
++			area_id: area_id
++		}, function (res) {
++			if (!res.success) return;
++
++			populateSelect('#ipao_curso',    res.data.cursos,    'Selecciona un curso...');
++			populateSelect('#ipao_formacion', res.data.formacion, 'Selecciona una formación...');
++			renderMaterias(res.data.materias);
++		});
++	});
++
++	$('#ipao_curso').on('change', function () {
++		var curso_id = $(this).val();
++		if (!curso_id) return;
++
++		$.post(ipao_ajax.url, {
++			action:   'ipao_get_formacion',
++			nonce:    ipao_ajax.nonce,
++			curso_id: curso_id
++		}, function (res) {
++			if (!res.success) return;
++
++			populateSelect('#ipao_formacion', res.data.formacion, 'Selecciona una formación...');
++			renderMaterias(res.data.materias);
++		});
++	});
++
++	$('#ipao_formacion').on('change', function () {
++		var formacion_id = $(this).val();
++		if (!formacion_id) return;
++
++		$.post(ipao_ajax.url, {
++			action:       'ipao_get_materias',
++			nonce:        ipao_ajax.nonce,
++			formacion_id: formacion_id
++		}, function (res) {
++			if (!res.success) return;
++			renderMaterias(res.data.materias);
++		});
++	});
++
++	function populateSelect(selector, items, placeholder) {
++		var $sel = $(selector).empty();
++		if (placeholder) $sel.append($('<option>', { value: '', text: placeholder }));
++		$.each(items || [], function (i, item) {
++			$sel.append($('<option>', { value: item.id, text: item.name }));
++		});
++	}
++
++	function renderMaterias(items) {
++		var $list = $('#ipao-materias-list').empty();
++		if (!items || items.length === 0) {
++			$list.append('<p class="ipao-no-materias">No hay materias disponibles.</p>');
++			return;
++		}
++		$.each(items, function (i, item) {
++			var id = 'materia_' + item.id;
++			$list.append(
++				$('<label>', { class: 'ipao-checkbox-label', for: id }).append(
++					$('<input>', { type: 'checkbox', id: id, name: 'materia_ids[]', value: item.id }),
++					' ' + item.name
++				)
++			);
++		});
++	}
++
++	// ── Envío del formulario ─────────────────────────────────────────────────
++	$('#ipao-inscripcion-form').on('submit', function (e) {
+ 		e.preventDefault();
+ 
++		// Validar firma
+ 		if (signaturePad.isEmpty()) {
+-			alert("Por favor, proporciona tu firma.");
++			$('#ipao-firma-error').show();
++			$('html, body').animate({ scrollTop: $('#ipao-firma-error').offset().top - 100 }, 400);
+ 			return;
+ 		}
++		$('#ipao-firma-error').hide();
+ 
+-		var firmaDataUrl = signaturePad.toDataURL("image/png");
+-		$('#ipao_firma_data').val(firmaDataUrl);
++		// Capturar firma
++		$('#ipao_firma_data').val(signaturePad.toDataURL('image/png'));
+ 
+-		var $form = $(this);
+-		var $submitBtn = $('#ipao-submit-btn');
+-		var $spinner = $('.ipao-spinner');
+-		var $messages = $('#ipao-form-messages');
++		var $form    = $(this);
++		var $btn     = $('#ipao-submit-btn');
++		var $msgs    = $('#ipao-messages');
+ 
+-		$submitBtn.prop('disabled', true);
+-		$spinner.show();
+-		$messages.hide().removeClass('success error');
+-
+-		var formData = $form.serialize() + '&action=ipao_submit_form&nonce=' + ipao_ajax.nonce;
++		$btn.prop('disabled', true);
++		$btn.find('.btn-text').hide();
++		$btn.find('.btn-loading').show();
++		$msgs.html('').removeClass('ipao-success ipao-error');
+ 
+ 		$.ajax({
+ 			type: 'POST',
+-			url: ipao_ajax.url,
+-			data: formData,
+-			success: function(response) {
+-				$submitBtn.prop('disabled', false);
+-				$spinner.hide();
+-
+-				if (response.success) {
+-					$messages.addClass('success').text(response.data.message);
++			url:  ipao_ajax.url,
++			data: $form.serialize() + '&action=ipao_submit_form&nonce=' + ipao_ajax.nonce,
++			success: function (res) {
++				$btn.prop('disabled', false);
++				$btn.find('.btn-text').show();
++				$btn.find('.btn-loading').hide();
++
++				if (res.success) {
++					$msgs.addClass('ipao-success').html('✅ ' + res.data.message);
+ 					$form[0].reset();
+ 					signaturePad.clear();
++					$('#ipao-tutor-section').hide();
++					$('#ipao-banco-section').hide();
++					$('html, body').animate({ scrollTop: $msgs.offset().top - 80 }, 400);
+ 				} else {
+-					$messages.addClass('error').text(response.data.message || 'Error desconocido');
++					$msgs.addClass('ipao-error').html('❌ ' + (res.data.message || 'Error desconocido'));
++					$('html, body').animate({ scrollTop: $msgs.offset().top - 80 }, 400);
+ 				}
+ 			},
+-			error: function() {
+-				$submitBtn.prop('disabled', false);
+-				$spinner.hide();
+-				$messages.addClass('error').text('Error de conexión con el servidor.');
++			error: function () {
++				$btn.prop('disabled', false);
++				$btn.find('.btn-text').show();
++				$btn.find('.btn-loading').hide();
++				$msgs.addClass('ipao-error').html('❌ Error de conexión. Inténtalo de nuevo.');
+ 			}
+ 		});
+ 	});
+diff --git a/public/views/form.php b/public/views/form.php
+index 2ad9224..5a77daa 100644
+--- a/public/views/form.php
++++ b/public/views/form.php
+@@ -1,54 +1,258 @@
+-<div class="ipao-form-container">
+-	<form id="ipao-inscripcion-form">
+-		<div class="ipao-form-row">
+-			<label for="ipao_curso">Curso / Subcurso</label>
+-			<select id="ipao_curso" name="curso_id" required>
+-				<option value="">Selecciona un curso...</option>
+-				<?php foreach ( $cursos as $curso ) : ?>
+-					<option value="<?php echo esc_attr( $curso['id'] ); ?>"><?php echo esc_html( $curso['title'] ); ?></option>
+-				<?php endforeach; ?>
+-			</select>
+-		</div>
++<div id="ipao-form-container" class="ipao-form-container">
++	<div id="ipao-messages"></div>
++
++	<form id="ipao-inscripcion-form" novalidate>
++		<?php wp_nonce_field( 'ipao_form_nonce', '_ipao_nonce' ); ?>
++
++		<!-- ══ DATOS DEL CURSO ══════════════════════════════════════════════ -->
++		<div class="ipao-section">
++			<h3 class="ipao-section-title">📚 Datos del Curso</h3>
++
++			<div class="ipao-field">
++				<label for="ipao_area_formativa">Área Formativa <span class="required">*</span></label>
++				<select id="ipao_area_formativa" name="area_formativa_id" required>
++					<option value="">Selecciona un área formativa...</option>
++					<?php foreach ( $areas as $area ) : ?>
++						<option value="<?php echo esc_attr( $area['id'] ); ?>"><?php echo esc_html( $area['name'] ); ?></option>
++					<?php endforeach; ?>
++				</select>
++			</div>
+ 
+-		<div class="ipao-form-row">
+-			<label for="ipao_nombre">Nombre</label>
+-			<input type="text" id="ipao_nombre" name="nombre" required>
++			<div class="ipao-field">
++				<label for="ipao_curso">Curso <span class="required">*</span></label>
++				<select id="ipao_curso" name="curso_id">
++					<?php foreach ( $cursos as $c ) : ?>
++						<option value="<?php echo esc_attr( $c['id'] ); ?>"><?php echo esc_html( $c['name'] ); ?></option>
++					<?php endforeach; ?>
++				</select>
++			</div>
++
++			<div class="ipao-field">
++				<label for="ipao_formacion">Formación</label>
++				<select id="ipao_formacion" name="formacion_id">
++					<?php foreach ( $formacion as $f ) : ?>
++						<option value="<?php echo esc_attr( $f['id'] ); ?>"><?php echo esc_html( $f['name'] ); ?></option>
++					<?php endforeach; ?>
++				</select>
++			</div>
++
++			<div class="ipao-field" id="ipao-materias-wrapper">
++				<label>Materias</label>
++				<div id="ipao-materias-list" class="ipao-checkboxes">
++					<?php foreach ( $materias as $m ) : ?>
++						<label class="ipao-checkbox-label">
++							<input type="checkbox" name="materia_ids[]" value="<?php echo esc_attr( $m['id'] ); ?>">
++							<?php echo esc_html( $m['name'] ); ?>
++						</label>
++					<?php endforeach; ?>
++				</div>
++			</div>
+ 		</div>
+ 
+-		<div class="ipao-form-row">
+-			<label for="ipao_apellidos">Apellidos</label>
+-			<input type="text" id="ipao_apellidos" name="apellidos" required>
++		<!-- ══ DATOS DEL ALUMNO ═════════════════════════════════════════════ -->
++		<div class="ipao-section">
++			<h3 class="ipao-section-title">👤 Datos del Alumno</h3>
++
++			<div class="ipao-row-2">
++				<div class="ipao-field">
++					<label for="ipao_nombre">Nombre <span class="required">*</span></label>
++					<input type="text" id="ipao_nombre" name="nombre" required autocomplete="given-name">
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_apellidos">Apellidos <span class="required">*</span></label>
++					<input type="text" id="ipao_apellidos" name="apellidos" required autocomplete="family-name">
++				</div>
++			</div>
++
++			<div class="ipao-row-2">
++				<div class="ipao-field">
++					<label for="ipao_dni">DNI / NIE <span class="required">*</span></label>
++					<input type="text" id="ipao_dni" name="dni" required placeholder="12345678A">
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_fnacimiento">Fecha de nacimiento <span class="required">*</span></label>
++					<input type="date" id="ipao_fnacimiento" name="fnacimiento" required>
++				</div>
++			</div>
++
++			<div class="ipao-field">
++				<label for="ipao_email">Email <span class="required">*</span></label>
++				<input type="email" id="ipao_email" name="email" required autocomplete="email">
++			</div>
++
++			<div class="ipao-field">
++				<label for="ipao_direccion">Dirección <span class="required">*</span></label>
++				<input type="text" id="ipao_direccion" name="direccion" required autocomplete="street-address">
++			</div>
++
++			<div class="ipao-row-3">
++				<div class="ipao-field">
++					<label for="ipao_localidad">Localidad <span class="required">*</span></label>
++					<input type="text" id="ipao_localidad" name="localidad" required>
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_provincia">Provincia <span class="required">*</span></label>
++					<select id="ipao_provincia" name="provincia" required>
++						<option value="">Selecciona...</option>
++						<?php foreach ( $provincias as $p ) : ?>
++							<option value="<?php echo esc_attr( $p ); ?>"><?php echo esc_html( $p ); ?></option>
++						<?php endforeach; ?>
++					</select>
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_cp">Código Postal <span class="required">*</span></label>
++					<input type="text" id="ipao_cp" name="cp" required maxlength="5" placeholder="28000">
++				</div>
++			</div>
++
++			<div class="ipao-row-2">
++				<div class="ipao-field">
++					<label for="ipao_tlfmovil">Teléfono Móvil <span class="required">*</span></label>
++					<input type="tel" id="ipao_tlfmovil" name="tlfmovil" required placeholder="600000000">
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_tlffijo">Teléfono Fijo</label>
++					<input type="tel" id="ipao_tlffijo" name="tlffijo" placeholder="910000000">
++				</div>
++			</div>
++
++			<div class="ipao-field ipao-checkbox-single">
++				<label>
++					<input type="checkbox" id="ipao_menor_edad" name="menor_edad" value="1">
++					¿Es menor de edad?
++				</label>
++			</div>
+ 		</div>
+ 
+-		<div class="ipao-form-row">
+-			<label for="ipao_dni">DNI / NIE</label>
+-			<input type="text" id="ipao_dni" name="dni" required>
++		<!-- ══ DATOS DEL TUTOR (solo si menor) ══════════════════════════════ -->
++		<div class="ipao-section ipao-tutor-section" id="ipao-tutor-section" style="display:none;">
++			<h3 class="ipao-section-title">👨‍👧 Datos del Tutor / Representante Legal</h3>
++
++			<div class="ipao-row-2">
++				<div class="ipao-field">
++					<label for="ipao_tutor_nombre">Nombre del tutor</label>
++					<input type="text" id="ipao_tutor_nombre" name="tutor_nombre">
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_tutor_apellidos">Apellidos del tutor</label>
++					<input type="text" id="ipao_tutor_apellidos" name="tutor_apellidos">
++				</div>
++			</div>
++
++			<div class="ipao-row-3">
++				<div class="ipao-field">
++					<label for="ipao_tutor_dni">DNI del tutor</label>
++					<input type="text" id="ipao_tutor_dni" name="tutor_dni">
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_tutor_tlfmovil">Teléfono del tutor</label>
++					<input type="tel" id="ipao_tutor_tlfmovil" name="tutor_tlfmovil">
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_tutor_email">Email del tutor</label>
++					<input type="email" id="ipao_tutor_email" name="tutor_email">
++				</div>
++			</div>
+ 		</div>
+ 
+-		<div class="ipao-form-row">
+-			<label for="ipao_email">Correo Electrónico</label>
+-			<input type="email" id="ipao_email" name="email" required>
++		<!-- ══ MODALIDAD Y PAGO ══════════════════════════════════════════════ -->
++		<div class="ipao-section">
++			<h3 class="ipao-section-title">💳 Modalidad y Forma de Pago</h3>
++
++			<div class="ipao-row-2">
++				<div class="ipao-field">
++					<label for="ipao_modalidad">Modalidad</label>
++					<select id="ipao_modalidad" name="modalidad">
++						<option value="online">Online</option>
++						<option value="presencial">Presencial</option>
++					</select>
++				</div>
++				<div class="ipao-field">
++					<label>Forma de pago</label>
++					<div class="ipao-radio-group">
++						<label><input type="radio" name="forma_pago" value="efectivo" checked> Pago en efectivo</label>
++						<label><input type="radio" name="forma_pago" value="transferencia"> Transferencia bancaria</label>
++						<label><input type="radio" name="forma_pago" value="domiciliacion"> Domiciliación bancaria</label>
++					</div>
++				</div>
++			</div>
++
++			<!-- Datos bancarios (solo si domiciliación) -->
++			<div id="ipao-banco-section" style="display:none;">
++				<div class="ipao-row-2">
++					<div class="ipao-field">
++						<label for="ipao_banco_nombre">Nombre titular cuenta</label>
++						<input type="text" id="ipao_banco_nombre" name="banco_nombre">
++					</div>
++					<div class="ipao-field">
++						<label for="ipao_banco_apellidos">Apellidos titular</label>
++						<input type="text" id="ipao_banco_apellidos" name="banco_apellidos">
++					</div>
++				</div>
++				<div class="ipao-row-2">
++					<div class="ipao-field">
++						<label for="ipao_banco_entidad">Nombre entidad bancaria</label>
++						<input type="text" id="ipao_banco_entidad" name="banco_entidad">
++					</div>
++					<div class="ipao-field">
++						<label for="ipao_banco_cuenta">Número de cuenta (IBAN)</label>
++						<input type="text" id="ipao_banco_cuenta" name="banco_cuenta" placeholder="ES00 0000 0000 0000 0000 0000">
++					</div>
++				</div>
++			</div>
+ 		</div>
+ 
+-		<div class="ipao-form-row">
+-			<label for="ipao_telefono">Teléfono</label>
+-			<input type="tel" id="ipao_telefono" name="telefono" required>
++		<!-- ══ DATOS DEL CONTRATO ════════════════════════════════════════════ -->
++		<div class="ipao-section">
++			<h3 class="ipao-section-title">📋 Datos del Contrato</h3>
++
++			<div class="ipao-row-3">
++				<div class="ipao-field">
++					<label for="ipao_fecha_inicio">Fecha de inicio</label>
++					<input type="date" id="ipao_fecha_inicio" name="fecha_inicio">
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_fecha_fin">Fecha de finalización</label>
++					<input type="date" id="ipao_fecha_fin" name="fecha_fin">
++				</div>
++				<div class="ipao-field">
++					<label for="ipao_fecha_certificado">Fecha certificado asistencia</label>
++					<input type="date" id="ipao_fecha_certificado" name="fecha_certificado">
++				</div>
++			</div>
++
++			<div class="ipao-field">
++				<label for="ipao_observaciones">Observaciones</label>
++				<textarea id="ipao_observaciones" name="observaciones" rows="4"></textarea>
++			</div>
+ 		</div>
+ 
+-		<div class="ipao-form-row">
+-			<label>Firma</label>
+-			<div class="ipao-signature-wrapper">
+-				<canvas id="ipao-signature-pad"></canvas>
++		<!-- ══ FIRMA DIGITAL ═════════════════════════════════════════════════ -->
++		<div class="ipao-section">
++			<h3 class="ipao-section-title">✍️ Firma Digital <span class="required">*</span></h3>
++			<p class="ipao-firma-desc">Firma en el recuadro usando el ratón o el dedo (en móvil/tablet).</p>
++			<div class="ipao-canvas-wrapper">
++				<canvas id="ipao-firma-canvas"></canvas>
+ 			</div>
+-			<button type="button" id="ipao-clear-signature">Borrar Firma</button>
+-			<input type="hidden" name="firma" id="ipao_firma_data" required>
++			<button type="button" id="ipao-clear-signature" class="ipao-btn-secondary">Borrar firma</button>
++			<input type="hidden" id="ipao_firma_data" name="firma">
++			<p id="ipao-firma-error" class="ipao-error" style="display:none;">La firma es obligatoria.</p>
+ 		</div>
+ 
+-		<div class="ipao-form-row ipao-submit-row">
+-			<button type="submit" id="ipao-submit-btn">Inscribirse</button>
+-			<span class="ipao-spinner" style="display:none;">Enviando...</span>
++		<!-- ══ PRIVACIDAD ════════════════════════════════════════════════════ -->
++		<div class="ipao-section ipao-privacidad">
++			<label class="ipao-checkbox-single">
++				<input type="checkbox" name="politica_privacidad" id="ipao_privacidad" required>
++				He leído y acepto la política de privacidad. Mis datos personales serán almacenados de forma segura. <span class="required">*</span>
++			</label>
+ 		</div>
+ 
+-		<div id="ipao-form-messages"></div>
++		<!-- ══ ENVIAR ════════════════════════════════════════════════════════ -->
++		<div class="ipao-submit-wrapper">
++			<button type="submit" id="ipao-submit-btn" class="ipao-btn-primary">
++				<span class="btn-text">Enviar Inscripción</span>
++				<span class="btn-loading" style="display:none;">⏳ Enviando...</span>
++			</button>
++		</div>
+ 	</form>
+ </div>
+
+commit 06ea3ce5164bf7655a603ee73791d8294314eaba
+Author: SISTEMAS\acaballero <acaballero@e-sistemas.net>
+Date:   Thu Apr 30 14:53:15 2026 +0200
+
+    Commit inicial
+---
+ admin/views/page-inscripciones.php |  39 +++++++++
+ admin/views/page-settings.php      |  69 +++++++++++++++
+ includes/class-admin.php           |  89 +++++++++++++++++++
+ includes/class-ajax.php            |  92 ++++++++++++++++++++
+ includes/class-form.php            |  55 ++++++++++++
+ includes/class-graph-api.php       | 174 +++++++++++++++++++++++++++++++++++++
+ includes/class-install.php         |  41 +++++++++
+ includes/class-settings.php        |  32 +++++++
+ ipaopunk.php                       |  53 +++++++++++
+ public/css/ipao-public.css         |  79 +++++++++++++++++
+ public/js/ipao-public.js           |  69 +++++++++++++++
+ public/views/form.php              |  54 ++++++++++++
+ 12 files changed, 846 insertions(+)
+
+diff --git a/admin/views/page-inscripciones.php b/admin/views/page-inscripciones.php
+new file mode 100644
+index 0000000..8cfe4bb
+--- /dev/null
++++ b/admin/views/page-inscripciones.php
+@@ -0,0 +1,39 @@
++<div class="wrap">
++	<h1>Inscripciones (IpaoPunk)</h1>
++	<table class="wp-list-table widefat fixed striped">
++		<thead>
++			<tr>
++				<th>ID</th>
++				<th>Curso</th>
++				<th>Carpeta SharePoint</th>
++				<th>Estado</th>
++				<th>Fecha</th>
++			</tr>
++		</thead>
++		<tbody>
++			<?php if ( empty( $inscripciones ) ) : ?>
++				<tr>
++					<td colspan="5">No hay inscripciones todavía.</td>
++				</tr>
++			<?php else : ?>
++				<?php foreach ( $inscripciones as $inscripcion ) : ?>
++					<tr>
++						<td><?php echo esc_html( $inscripcion->id ); ?></td>
++						<td><?php echo esc_html( $inscripcion->course_name ); ?></td>
++						<td><?php echo esc_html( $inscripcion->sharepoint_folder_path ); ?></td>
++						<td>
++							<?php 
++								if ( $inscripcion->estado === 'firmado' ) {
++									echo '<span style="color:green; font-weight:bold;">Firmado</span>';
++								} else {
++									echo esc_html( ucfirst( $inscripcion->estado ) ); 
++								}
++							?>
++						</td>
++						<td><?php echo esc_html( $inscripcion->fecha_inscripcion ); ?></td>
++					</tr>
++				<?php endforeach; ?>
++			<?php endif; ?>
++		</tbody>
++	</table>
++</div>
+diff --git a/admin/views/page-settings.php b/admin/views/page-settings.php
+new file mode 100644
+index 0000000..abf9b60
+--- /dev/null
++++ b/admin/views/page-settings.php
+@@ -0,0 +1,69 @@
++<div class="wrap">
++	<h1>Configuración de IpaoPunk (SharePoint)</h1>
++	<?php settings_errors( 'ipao_messages' ); ?>
++	<form method="post" action="">
++		<?php wp_nonce_field( 'ipao_settings_nonce' ); ?>
++		<table class="form-table">
++			<tr>
++				<th scope="row"><label for="tenant_id">Tenant ID</label></th>
++				<td><input type="text" name="tenant_id" id="tenant_id" value="<?php echo esc_attr( $settings['tenant_id'] ); ?>" class="regular-text"></td>
++			</tr>
++			<tr>
++				<th scope="row"><label for="client_id">Client ID</label></th>
++				<td><input type="text" name="client_id" id="client_id" value="<?php echo esc_attr( $settings['client_id'] ); ?>" class="regular-text"></td>
++			</tr>
++			<tr>
++				<th scope="row"><label for="client_secret">Client Secret</label></th>
++				<td><input type="password" name="client_secret" id="client_secret" value="<?php echo esc_attr( $settings['client_secret'] ); ?>" class="regular-text"></td>
++			</tr>
++			<tr>
++				<th scope="row"><label for="drive_id">Drive ID</label></th>
++				<td><input type="text" name="drive_id" id="drive_id" value="<?php echo esc_attr( $settings['drive_id'] ); ?>" class="regular-text"></td>
++			</tr>
++			<tr>
++				<th scope="row"><label for="folder_id">Folder ID</label></th>
++				<td><input type="text" name="folder_id" id="folder_id" value="<?php echo esc_attr( $settings['folder_id'] ); ?>" class="regular-text"></td>
++			</tr>
++		</table>
++		<?php submit_button( 'Guardar Configuración', 'primary', 'ipao_save_settings' ); ?>
++	</form>
++
++	<hr>
++	<h2>Probar Conexión</h2>
++	<p>Verifica si las credenciales son correctas y el plugin puede acceder a SharePoint.</p>
++	<button id="ipao-test-connection" class="button button-secondary">Probar Conexión</button>
++	<span class="spinner" id="ipao-test-spinner"></span>
++	<div id="ipao-test-result" style="margin-top: 10px; font-weight: bold;"></div>
++
++	<script>
++	jQuery(document).ready(function($) {
++		$('#ipao-test-connection').on('click', function(e) {
++			e.preventDefault();
++			var $btn = $(this);
++			var $spinner = $('#ipao-test-spinner');
++			var $result = $('#ipao-test-result');
++
++			$btn.prop('disabled', true);
++			$spinner.addClass('is-active');
++			$result.text('Comprobando...');
++
++			$.post(ajaxurl, {
++				action: 'ipao_test_connection',
++				nonce: '<?php echo wp_create_nonce("ipao_settings_nonce"); ?>'
++			}, function(response) {
++				$btn.prop('disabled', false);
++				$spinner.removeClass('is-active');
++				if(response.success) {
++					$result.css('color', 'green').text('✅ ' + response.data);
++				} else {
++					$result.css('color', 'red').text('❌ Error: ' + response.data);
++				}
++			}).fail(function() {
++				$btn.prop('disabled', false);
++				$spinner.removeClass('is-active');
++				$result.css('color', 'red').text('❌ Error de red al comprobar la conexión.');
++			});
++		});
++	});
++	</script>
++</div>
+diff --git a/includes/class-admin.php b/includes/class-admin.php
+new file mode 100644
+index 0000000..5d7dfa4
+--- /dev/null
++++ b/includes/class-admin.php
+@@ -0,0 +1,89 @@
++<?php
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++
++class IPAO_Admin {
++
++	public static function init() {
++		add_action( 'admin_menu', [ __CLASS__, 'add_menu_pages' ] );
++		add_action( 'admin_init', [ __CLASS__, 'handle_settings_save' ] );
++		add_action( 'wp_ajax_ipao_test_connection', [ __CLASS__, 'handle_ajax_test_connection' ] );
++	}
++
++	public static function add_menu_pages() {
++		add_menu_page(
++			'IpaoPunk - Inscripciones',
++			'IpaoPunk',
++			'manage_options',
++			'ipaopunk',
++			[ __CLASS__, 'render_inscripciones_page' ],
++			'dashicons-clipboard',
++			56
++		);
++
++		add_submenu_page(
++			'ipaopunk',
++			'Inscripciones',
++			'Inscripciones',
++			'manage_options',
++			'ipaopunk',
++			[ __CLASS__, 'render_inscripciones_page' ]
++		);
++
++		add_submenu_page(
++			'ipaopunk',
++			'Configuración SharePoint',
++			'Configuración',
++			'manage_options',
++			'ipaopunk-settings',
++			[ __CLASS__, 'render_settings_page' ]
++		);
++	}
++
++	public static function render_inscripciones_page() {
++		global $wpdb;
++		$table = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
++		$inscripciones = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY fecha_inscripcion DESC" );
++		include IPAO_PLUGIN_PATH . 'admin/views/page-inscripciones.php';
++	}
++
++	public static function render_settings_page() {
++		$settings = IPAO_Settings::get_all();
++		include IPAO_PLUGIN_PATH . 'admin/views/page-settings.php';
++	}
++
++	public static function handle_settings_save() {
++		if ( isset( $_POST['ipao_save_settings'] ) && check_admin_referer( 'ipao_settings_nonce' ) ) {
++			if ( ! current_user_can( 'manage_options' ) ) {
++				wp_die( 'No tienes permiso para esto.' );
++			}
++
++			IPAO_Settings::set( [
++				'tenant_id'     => $_POST['tenant_id'],
++				'client_id'     => $_POST['client_id'],
++				'client_secret' => $_POST['client_secret'],
++				'drive_id'      => $_POST['drive_id'],
++				'folder_id'     => $_POST['folder_id'],
++			] );
++
++			add_settings_error( 'ipao_messages', 'ipao_message', 'Configuración guardada correctamente.', 'updated' );
++		}
++	}
++
++	public static function handle_ajax_test_connection() {
++		check_ajax_referer( 'ipao_settings_nonce', 'nonce' );
++		
++		if ( ! current_user_can( 'manage_options' ) ) {
++			wp_send_json_error( 'Permiso denegado.' );
++		}
++
++		$api = new IPAO_Graph_API();
++		$result = $api->test_connection();
++		if ( $result['success'] ) {
++			wp_send_json_success( $result['message'] );
++		} else {
++			wp_send_json_error( $result['message'] );
++		}
++	}
++}
+diff --git a/includes/class-ajax.php b/includes/class-ajax.php
+new file mode 100644
+index 0000000..e3b7ab6
+--- /dev/null
++++ b/includes/class-ajax.php
+@@ -0,0 +1,92 @@
++<?php
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++
++class IPAO_Ajax {
++
++	public static function init() {
++		add_action( 'wp_ajax_ipao_submit_form', [ __CLASS__, 'handle_form_submission' ] );
++		add_action( 'wp_ajax_nopriv_ipao_submit_form', [ __CLASS__, 'handle_form_submission' ] );
++	}
++
++	public static function handle_form_submission() {
++		check_ajax_referer( 'ipao_form_nonce', 'nonce' );
++
++		try {
++			$curso_id = isset( $_POST['curso_id'] ) ? intval( $_POST['curso_id'] ) : 0;
++			$nombre   = isset( $_POST['nombre'] ) ? sanitize_text_field( $_POST['nombre'] ) : '';
++			$apellidos= isset( $_POST['apellidos'] ) ? sanitize_text_field( $_POST['apellidos'] ) : '';
++			$dni      = isset( $_POST['dni'] ) ? sanitize_text_field( $_POST['dni'] ) : '';
++			$email    = isset( $_POST['email'] ) ? sanitize_email( $_POST['email'] ) : '';
++			$telefono = isset( $_POST['telefono'] ) ? sanitize_text_field( $_POST['telefono'] ) : '';
++			$firma    = isset( $_POST['firma'] ) ? $_POST['firma'] : '';
++
++			if ( ! $curso_id || ! $nombre || ! $apellidos || ! $dni || ! $email || ! $firma ) {
++				throw new Exception( 'Por favor, rellena todos los campos requeridos y firma el documento.' );
++			}
++
++			if ( strpos( $firma, 'data:image/png;base64,' ) !== 0 ) {
++				throw new Exception( 'Formato de firma inválido.' );
++			}
++			
++			$firma_data = base64_decode( substr( $firma, strpos( $firma, ',' ) + 1 ) );
++			if ( ! $firma_data ) {
++				throw new Exception( 'Datos de firma vacíos.' );
++			}
++
++			$curso_title = get_the_title( $curso_id );
++			if ( ! $curso_title ) {
++				throw new Exception( 'El curso seleccionado no existe.' );
++			}
++
++			$api = new IPAO_Graph_API();
++			if ( ! $api->is_configured() ) {
++				throw new Exception( 'El sistema no está configurado correctamente (Graph API).' );
++			}
++
++			$folder_name = sanitize_file_name( "{$dni}_{$nombre}_{$apellidos}" );
++			$folder_id = $api->create_folder( $folder_name );
++
++			$json_data = json_encode( [
++				'curso_id'  => $curso_id,
++				'curso'     => $curso_title,
++				'nombre'    => $nombre,
++				'apellidos' => $apellidos,
++				'dni'       => $dni,
++				'email'     => $email,
++				'telefono'  => $telefono,
++				'fecha'     => current_time( 'mysql' ),
++			], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE );
++
++			$file_id = $api->upload_file( $folder_id, 'datos.json', $json_data );
++			$firma_id = $api->upload_file( $folder_id, 'firma.png', $firma_data, 'image/png' );
++
++			global $wpdb;
++			$table = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
++			$inserted = $wpdb->insert(
++				$table,
++				[
++					'course_id'             => $curso_id,
++					'course_name'           => $curso_title,
++					'sharepoint_folder_id'  => $folder_id,
++					'sharepoint_file_id'    => $file_id,
++					'sharepoint_firma_id'   => $firma_id,
++					'sharepoint_folder_path'=> $folder_name,
++					'estado'                => 'firmado',
++					'fecha_inscripcion'     => current_time( 'mysql' ),
++				],
++				[ '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' ]
++			);
++
++			if ( ! $inserted ) {
++				throw new Exception( 'Error al guardar la inscripción localmente, pero se subió a SharePoint.' );
++			}
++
++			wp_send_json_success( [ 'message' => 'Inscripción completada y guardada correctamente en SharePoint.' ] );
++
++		} catch ( Exception $e ) {
++			wp_send_json_error( [ 'message' => $e->getMessage() ] );
++		}
++	}
++}
+diff --git a/includes/class-form.php b/includes/class-form.php
+new file mode 100644
+index 0000000..78c4a19
+--- /dev/null
++++ b/includes/class-form.php
+@@ -0,0 +1,55 @@
++<?php
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++
++class IPAO_Form {
++
++	public static function init() {
++		add_shortcode( 'ipao_formulario', [ __CLASS__, 'render_shortcode' ] );
++		add_action( 'wp_enqueue_scripts', [ __CLASS__, 'enqueue_scripts' ] );
++	}
++
++	public static function enqueue_scripts() {
++		wp_register_style( 'ipao-form-css', IPAO_PLUGIN_URL . 'public/css/ipao-public.css', [], IPAO_VERSION );
++		wp_register_script( 'ipao-signature-pad', 'https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js', [], '4.1.7', true );
++		wp_register_script( 'ipao-form-js', IPAO_PLUGIN_URL . 'public/js/ipao-public.js', [ 'jquery', 'ipao-signature-pad' ], IPAO_VERSION, true );
++
++		wp_localize_script( 'ipao-form-js', 'ipao_ajax', [
++			'url'   => admin_url( 'admin-ajax.php' ),
++			'nonce' => wp_create_nonce( 'ipao_form_nonce' ),
++		] );
++	}
++
++	public static function render_shortcode( $atts ) {
++		wp_enqueue_style( 'ipao-form-css' );
++		wp_enqueue_script( 'ipao-form-js' );
++
++		$cursos = self::get_active_courses();
++
++		ob_start();
++		include IPAO_PLUGIN_PATH . 'public/views/form.php';
++		return ob_get_clean();
++	}
++
++	private static function get_active_courses() {
++		$args = [
++			'post_type'      => 'lp_course',
++			'post_status'    => 'publish',
++			'posts_per_page' => -1,
++			'orderby'        => 'title',
++			'order'          => 'ASC',
++		];
++		$query = new WP_Query( $args );
++		$cursos = [];
++		if ( $query->have_posts() ) {
++			foreach ( $query->posts as $post ) {
++				$cursos[] = [
++					'id'    => $post->ID,
++					'title' => $post->post_title,
++				];
++			}
++		}
++		return $cursos;
++	}
++}
+diff --git a/includes/class-graph-api.php b/includes/class-graph-api.php
+new file mode 100644
+index 0000000..96f548b
+--- /dev/null
++++ b/includes/class-graph-api.php
+@@ -0,0 +1,174 @@
++<?php
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++
++class IPAO_Graph_API {
++
++	private $tenant_id;
++	private $client_id;
++	private $client_secret;
++	private $drive_id;
++	private $folder_id;
++	private $access_token = null;
++
++	public function __construct() {
++		$this->tenant_id     = IPAO_Settings::get( 'tenant_id' );
++		$this->client_id     = IPAO_Settings::get( 'client_id' );
++		$this->client_secret = IPAO_Settings::get( 'client_secret' );
++		$this->drive_id      = IPAO_Settings::get( 'drive_id' );
++		$this->folder_id     = IPAO_Settings::get( 'folder_id' );
++	}
++
++	public function is_configured() {
++		return $this->tenant_id && $this->client_id && $this->client_secret
++			&& $this->drive_id && $this->folder_id;
++	}
++
++	private function get_access_token() {
++		if ( $this->access_token ) {
++			return $this->access_token;
++		}
++
++		$url  = "https://login.microsoftonline.com/{$this->tenant_id}/oauth2/v2.0/token";
++		$body = [
++			'grant_type'    => 'client_credentials',
++			'client_id'     => $this->client_id,
++			'client_secret' => $this->client_secret,
++			'scope'         => 'https://graph.microsoft.com/.default',
++		];
++
++		$response = wp_remote_post( $url, [
++			'body'    => $body,
++			'timeout' => 30,
++		] );
++
++		if ( is_wp_error( $response ) ) {
++			throw new Exception( 'Error obteniendo token: ' . $response->get_error_message() );
++		}
++
++		$data = json_decode( wp_remote_retrieve_body( $response ), true );
++		if ( empty( $data['access_token'] ) ) {
++			throw new Exception( 'No se pudo obtener el token de acceso de Microsoft Graph.' );
++		}
++
++		$this->access_token = $data['access_token'];
++		return $this->access_token;
++	}
++
++	/**
++	 * Crea una subcarpeta dentro de la carpeta raíz configurada.
++	 * Devuelve el ID de la nueva carpeta.
++	 */
++	public function create_folder( $folder_name ) {
++		$token = $this->get_access_token();
++		$url   = "https://graph.microsoft.com/v1.0/drives/{$this->drive_id}/items/{$this->folder_id}/children";
++
++		$response = wp_remote_post( $url, [
++			'headers' => [
++				'Authorization' => 'Bearer ' . $token,
++				'Content-Type'  => 'application/json',
++			],
++			'body'    => json_encode( [
++				'name'                              => $folder_name,
++				'folder'                            => new stdClass(),
++				'@microsoft.graph.conflictBehavior' => 'rename',
++			] ),
++			'timeout' => 30,
++		] );
++
++		if ( is_wp_error( $response ) ) {
++			throw new Exception( 'Error creando carpeta en SharePoint: ' . $response->get_error_message() );
++		}
++
++		$data = json_decode( wp_remote_retrieve_body( $response ), true );
++		if ( empty( $data['id'] ) ) {
++			$err = isset( $data['error']['message'] ) ? $data['error']['message'] : wp_remote_retrieve_body( $response );
++			throw new Exception( 'No se pudo crear la carpeta en SharePoint: ' . $err );
++		}
++
++		return $data['id'];
++	}
++
++	/**
++	 * Sube un archivo a una carpeta (por ID de carpeta).
++	 * Devuelve el ID del archivo subido.
++	 */
++	public function upload_file( $folder_item_id, $filename, $content, $content_type = 'application/json' ) {
++		$token        = $this->get_access_token();
++		$encoded_name = rawurlencode( $filename );
++		$url          = "https://graph.microsoft.com/v1.0/drives/{$this->drive_id}/items/{$folder_item_id}:/{$encoded_name}:/content";
++
++		$response = wp_remote_request( $url, [
++			'method'  => 'PUT',
++			'headers' => [
++				'Authorization' => 'Bearer ' . $token,
++				'Content-Type'  => $content_type,
++			],
++			'body'    => $content,
++			'timeout' => 60,
++		] );
++
++		if ( is_wp_error( $response ) ) {
++			throw new Exception( 'Error subiendo archivo a SharePoint: ' . $response->get_error_message() );
++		}
++
++		$data = json_decode( wp_remote_retrieve_body( $response ), true );
++		if ( empty( $data['id'] ) ) {
++			$err = isset( $data['error']['message'] ) ? $data['error']['message'] : wp_remote_retrieve_body( $response );
++			throw new Exception( 'No se pudo subir el archivo: ' . $err );
++		}
++
++		return $data['id'];
++	}
++
++	/**
++	 * Obtiene un enlace web directo al archivo en SharePoint.
++	 */
++	public function get_file_web_url( $file_id ) {
++		$token    = $this->get_access_token();
++		$url      = "https://graph.microsoft.com/v1.0/drives/{$this->drive_id}/items/{$file_id}";
++		$response = wp_remote_get( $url, [
++			'headers' => [ 'Authorization' => 'Bearer ' . $token ],
++			'timeout' => 15,
++		] );
++
++		if ( is_wp_error( $response ) ) {
++			return '';
++		}
++		$data = json_decode( wp_remote_retrieve_body( $response ), true );
++		return isset( $data['webUrl'] ) ? $data['webUrl'] : '';
++	}
++
++	/**
++	 * Comprueba que la conexión con Graph API y la carpeta son correctas.
++	 */
++	public function test_connection() {
++		try {
++			$token = $this->get_access_token();
++			$url   = "https://graph.microsoft.com/v1.0/drives/{$this->drive_id}/items/{$this->folder_id}";
++
++			$response = wp_remote_get( $url, [
++				'headers' => [ 'Authorization' => 'Bearer ' . $token ],
++				'timeout' => 15,
++			] );
++
++			if ( is_wp_error( $response ) ) {
++				return [ 'success' => false, 'message' => $response->get_error_message() ];
++			}
++
++			$data = json_decode( wp_remote_retrieve_body( $response ), true );
++
++			if ( ! empty( $data['id'] ) ) {
++				return [ 'success' => true, 'message' => 'Conexión exitosa. Carpeta: ' . ( $data['name'] ?? '' ) ];
++			}
++
++			return [
++				'success' => false,
++				'message' => 'No se pudo acceder a la carpeta. ' . ( $data['error']['message'] ?? wp_remote_retrieve_body( $response ) ),
++			];
++		} catch ( Exception $e ) {
++			return [ 'success' => false, 'message' => $e->getMessage() ];
++		}
++	}
++}
+diff --git a/includes/class-install.php b/includes/class-install.php
+new file mode 100644
+index 0000000..4ce299e
+--- /dev/null
++++ b/includes/class-install.php
+@@ -0,0 +1,41 @@
++<?php
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++
++class IPAO_Install {
++
++	public static function activate() {
++		self::create_tables();
++		flush_rewrite_rules();
++	}
++
++	public static function deactivate() {
++		flush_rewrite_rules();
++	}
++
++	private static function create_tables() {
++		global $wpdb;
++		$table           = $wpdb->prefix . IPAO_TABLE_INSCRIPCIONES;
++		$charset_collate = $wpdb->get_charset_collate();
++
++		$sql = "CREATE TABLE IF NOT EXISTS {$table} (
++			id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
++			course_id bigint(20) UNSIGNED NOT NULL COMMENT 'ID del lp_course en WordPress',
++			course_name varchar(500) NOT NULL DEFAULT '',
++			sharepoint_folder_id varchar(1000) DEFAULT '' COMMENT 'ID de la carpeta del alumno en SharePoint',
++			sharepoint_file_id varchar(1000) DEFAULT '' COMMENT 'ID del archivo datos.json en SharePoint',
++			sharepoint_firma_id varchar(1000) DEFAULT '' COMMENT 'ID del archivo firma.png en SharePoint',
++			sharepoint_folder_path varchar(1000) DEFAULT '' COMMENT 'Nombre de la carpeta en SharePoint',
++			estado varchar(50) NOT NULL DEFAULT 'pendiente' COMMENT 'pendiente | confirmado | firmado',
++			fecha_inscripcion datetime NOT NULL,
++			notas text DEFAULT NULL,
++			PRIMARY KEY (id),
++			KEY course_id (course_id),
++			KEY estado (estado)
++		) {$charset_collate};";
++
++		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
++		dbDelta( $sql );
++	}
++}
+diff --git a/includes/class-settings.php b/includes/class-settings.php
+new file mode 100644
+index 0000000..e317d36
+--- /dev/null
++++ b/includes/class-settings.php
+@@ -0,0 +1,32 @@
++<?php
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++
++class IPAO_Settings {
++
++	const OPTION_KEY = 'ipao_settings';
++
++	public static function get( $key, $default = '' ) {
++		$settings = get_option( self::OPTION_KEY, [] );
++		return isset( $settings[ $key ] ) ? $settings[ $key ] : $default;
++	}
++
++	public static function set( array $data ) {
++		$settings = get_option( self::OPTION_KEY, [] );
++		foreach ( $data as $key => $value ) {
++			$settings[ $key ] = sanitize_text_field( $value );
++		}
++		update_option( self::OPTION_KEY, $settings );
++	}
++
++	public static function get_all() {
++		return wp_parse_args( get_option( self::OPTION_KEY, [] ), [
++			'tenant_id'     => '',
++			'client_id'     => '',
++			'client_secret' => '',
++			'drive_id'      => '',
++			'folder_id'     => '',
++		] );
++	}
++}
+diff --git a/ipaopunk.php b/ipaopunk.php
+new file mode 100644
+index 0000000..54e757f
+--- /dev/null
++++ b/ipaopunk.php
+@@ -0,0 +1,53 @@
++<?php
++/**
++ * Plugin Name: IpaoPunk
++ * Plugin URI:  https://ipao.online
++ * Description: Gestión de inscripciones a cursos de LearnPress con almacenamiento de datos personales en SharePoint.
++ * Version:     1.0.0
++ * Author:      e-sistemas
++ * Author URI:  https://e-sistemas.net
++ * Text Domain: ipaopunk
++ * Domain Path: /languages
++ * Requires at least: 6.0
++ * Requires PHP: 7.4
++ */
++
++if ( ! defined( 'ABSPATH' ) ) {
++	exit;
++}
++
++define( 'IPAO_VERSION', '1.0.0' );
++define( 'IPAO_PLUGIN_FILE', __FILE__ );
++define( 'IPAO_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
++define( 'IPAO_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
++define( 'IPAO_TABLE_INSCRIPCIONES', 'ipao_inscripciones' );
++
++// Autoload includes
++$ipao_classes = [
++	'class-install',
++	'class-settings',
++	'class-graph-api',
++	'class-form',
++	'class-ajax',
++	'class-admin',
++];
++foreach ( $ipao_classes as $class ) {
++	require_once IPAO_PLUGIN_PATH . 'includes/' . $class . '.php';
++}
++
++// Activation / Deactivation hooks
++register_activation_hook( __FILE__, [ 'IPAO_Install', 'activate' ] );
++register_deactivation_hook( __FILE__, [ 'IPAO_Install', 'deactivate' ] );
++
++// Init plugin
++add_action( 'plugins_loaded', 'ipao_init' );
++function ipao_init() {
++	load_plugin_textdomain( 'ipaopunk', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
++
++	IPAO_Form::init();
++	IPAO_Ajax::init();
++
++	if ( is_admin() ) {
++		IPAO_Admin::init();
++	}
++}
+diff --git a/public/css/ipao-public.css b/public/css/ipao-public.css
+new file mode 100644
+index 0000000..5ef947b
+--- /dev/null
++++ b/public/css/ipao-public.css
+@@ -0,0 +1,79 @@
++.ipao-form-container {
++	max-width: 600px;
++	margin: 0 auto;
++	padding: 20px;
++	background: #f9f9f9;
++	border-radius: 8px;
++	box-shadow: 0 2px 10px rgba(0,0,0,0.1);
++}
++.ipao-form-row {
++	margin-bottom: 15px;
++}
++.ipao-form-row label {
++	display: block;
++	margin-bottom: 5px;
++	font-weight: bold;
++}
++.ipao-form-row input[type="text"],
++.ipao-form-row input[type="email"],
++.ipao-form-row input[type="tel"],
++.ipao-form-row select {
++	width: 100%;
++	padding: 8px;
++	border: 1px solid #ccc;
++	border-radius: 4px;
++}
++.ipao-signature-wrapper {
++	border: 1px solid #ccc;
++	background: #fff;
++	border-radius: 4px;
++	margin-bottom: 5px;
++}
++.ipao-signature-wrapper canvas {
++	width: 100%;
++	height: 200px;
++	display: block;
++	touch-action: none;
++}
++#ipao-clear-signature {
++	background: #eee;
++	border: 1px solid #ccc;
++	padding: 5px 10px;
++	cursor: pointer;
++	font-size: 12px;
++	border-radius: 3px;
++}
++#ipao-submit-btn {
++	background: #0073aa;
++	color: #fff;
++	border: none;
++	padding: 10px 20px;
++	font-size: 16px;
++	cursor: pointer;
++	border-radius: 4px;
++}
++#ipao-submit-btn:hover {
++	background: #005177;
++}
++#ipao-submit-btn:disabled {
++	background: #ccc;
++	cursor: not-allowed;
++}
++#ipao-form-messages {
++	margin-top: 15px;
++	padding: 10px;
++	border-radius: 4px;
++	display: none;
++}
++#ipao-form-messages.success {
++	background: #d4edda;
++	color: #155724;
++	border: 1px solid #c3e6cb;
++	display: block;
++}
++#ipao-form-messages.error {
++	background: #f8d7da;
++	color: #721c24;
++	border: 1px solid #f5c6cb;
++	display: block;
++}
+diff --git a/public/js/ipao-public.js b/public/js/ipao-public.js
+new file mode 100644
+index 0000000..d957bf2
+--- /dev/null
++++ b/public/js/ipao-public.js
+@@ -0,0 +1,69 @@
++jQuery(document).ready(function($) {
++	if ($('#ipao-signature-pad').length === 0) return;
++
++	var canvas = document.getElementById('ipao-signature-pad');
++	
++	// Adjust canvas resolution for high-DPI displays
++	function resizeCanvas() {
++		var ratio =  Math.max(window.devicePixelRatio || 1, 1);
++		canvas.width = canvas.offsetWidth * ratio;
++		canvas.height = canvas.offsetHeight * ratio;
++		canvas.getContext("2d").scale(ratio, ratio);
++	}
++	window.addEventListener("resize", resizeCanvas);
++	resizeCanvas();
++
++	var signaturePad = new SignaturePad(canvas, {
++		backgroundColor: 'rgb(255, 255, 255)'
++	});
++
++	$('#ipao-clear-signature').on('click', function() {
++		signaturePad.clear();
++	});
++
++	$('#ipao-inscripcion-form').on('submit', function(e) {
++		e.preventDefault();
++
++		if (signaturePad.isEmpty()) {
++			alert("Por favor, proporciona tu firma.");
++			return;
++		}
++
++		var firmaDataUrl = signaturePad.toDataURL("image/png");
++		$('#ipao_firma_data').val(firmaDataUrl);
++
++		var $form = $(this);
++		var $submitBtn = $('#ipao-submit-btn');
++		var $spinner = $('.ipao-spinner');
++		var $messages = $('#ipao-form-messages');
++
++		$submitBtn.prop('disabled', true);
++		$spinner.show();
++		$messages.hide().removeClass('success error');
++
++		var formData = $form.serialize() + '&action=ipao_submit_form&nonce=' + ipao_ajax.nonce;
++
++		$.ajax({
++			type: 'POST',
++			url: ipao_ajax.url,
++			data: formData,
++			success: function(response) {
++				$submitBtn.prop('disabled', false);
++				$spinner.hide();
++
++				if (response.success) {
++					$messages.addClass('success').text(response.data.message);
++					$form[0].reset();
++					signaturePad.clear();
++				} else {
++					$messages.addClass('error').text(response.data.message || 'Error desconocido');
++				}
++			},
++			error: function() {
++				$submitBtn.prop('disabled', false);
++				$spinner.hide();
++				$messages.addClass('error').text('Error de conexión con el servidor.');
++			}
++		});
++	});
++});
+diff --git a/public/views/form.php b/public/views/form.php
+new file mode 100644
+index 0000000..2ad9224
+--- /dev/null
++++ b/public/views/form.php
+@@ -0,0 +1,54 @@
++<div class="ipao-form-container">
++	<form id="ipao-inscripcion-form">
++		<div class="ipao-form-row">
++			<label for="ipao_curso">Curso / Subcurso</label>
++			<select id="ipao_curso" name="curso_id" required>
++				<option value="">Selecciona un curso...</option>
++				<?php foreach ( $cursos as $curso ) : ?>
++					<option value="<?php echo esc_attr( $curso['id'] ); ?>"><?php echo esc_html( $curso['title'] ); ?></option>
++				<?php endforeach; ?>
++			</select>
++		</div>
++
++		<div class="ipao-form-row">
++			<label for="ipao_nombre">Nombre</label>
++			<input type="text" id="ipao_nombre" name="nombre" required>
++		</div>
++
++		<div class="ipao-form-row">
++			<label for="ipao_apellidos">Apellidos</label>
++			<input type="text" id="ipao_apellidos" name="apellidos" required>
++		</div>
++
++		<div class="ipao-form-row">
++			<label for="ipao_dni">DNI / NIE</label>
++			<input type="text" id="ipao_dni" name="dni" required>
++		</div>
++
++		<div class="ipao-form-row">
++			<label for="ipao_email">Correo Electrónico</label>
++			<input type="email" id="ipao_email" name="email" required>
++		</div>
++
++		<div class="ipao-form-row">
++			<label for="ipao_telefono">Teléfono</label>
++			<input type="tel" id="ipao_telefono" name="telefono" required>
++		</div>
++
++		<div class="ipao-form-row">
++			<label>Firma</label>
++			<div class="ipao-signature-wrapper">
++				<canvas id="ipao-signature-pad"></canvas>
++			</div>
++			<button type="button" id="ipao-clear-signature">Borrar Firma</button>
++			<input type="hidden" name="firma" id="ipao_firma_data" required>
++		</div>
++
++		<div class="ipao-form-row ipao-submit-row">
++			<button type="submit" id="ipao-submit-btn">Inscribirse</button>
++			<span class="ipao-spinner" style="display:none;">Enviando...</span>
++		</div>
++
++		<div id="ipao-form-messages"></div>
++	</form>
++</div>
