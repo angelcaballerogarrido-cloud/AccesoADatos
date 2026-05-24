@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalogo>
+    <item>
+        <nombre>Manzana</nombre>
+        <descripcion>Fruta muy saludable de color rojo brillante ideal para postres.</descripcion>
+        <stock>500</stock>
+    </item>
+    <item>
+        <nombre>Pan</nombre>
+        <descripcion>Baguette recien horneada.</descripcion>
+        <stock>30</stock>
+    </item>
+    <item>
+        <nombre>Leche</nombre>
+        <descripcion>Leche entera de vaca en formato brik de un litro, procedente de granjas ecologicas de alta montaña con certificado de bienestar animal de la region norte.</descripcion>
+        <stock>120</stock>
+    </item>
+</catalogo>
