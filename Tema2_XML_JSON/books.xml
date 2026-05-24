@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<catalogo>
-   <libro id="bk101" idioma="es">
-      <autor>Pérez, Juan</autor>
-      <titulo>Guía para Desarrolladores XML</titulo>
-      <genero>Informática</genero>
-      <precio>44.95</precio>
-      <fecha_publicacion>2026-10-01</fecha_publicacion>
-      <descripcion>Una mirada en profundidad a la creación de aplicaciones con XML y Java DOM.</descripcion>
-   </libro>
-   <libro id="bk102">
-      <autor>García, María</autor>
-      <titulo>JSON vs XML: El Combate Definitivo</titulo>
-      <genero>Ensayo Técnico</genero>
-      <precio>20.00</precio>
-      <descripcion>Comparativa de estructuras de datos en la red.</descripcion>
-   </libro>
-</catalogo>
+<Catalog>
+   <Book id="bk101">
+      <Author>Gambardella, Matthew</Author>
+      <Title>XML Developer's Guide</Title>
+      <Genre>Computer</Genre>
+      <Price>44.95</Price>
+      <Public_date>2000-10-01</Public_date>
+      <Description>An in-depth look at creating applications with XML.</Description>
+   </Book>
+   <Book id="bk102">
+      <Author>Ralls, Kim</Author>
+      <Title>Midnight Rain</Title>
+      <Genre>Fantasy</Genre>
+      <Price>5.95</Price>
+      <Public_date>2000-12-16</Public_date>
+      <Description>A former architect battles corporate zombies.</Description>
+   </Book>
+</Catalog>
