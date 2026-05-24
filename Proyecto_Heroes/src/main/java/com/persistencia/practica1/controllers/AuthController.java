@@ -1,20 +1,28 @@
 package com.persistencia.practica1.controllers;
 
-import com.persistencia.practica1.dtos.AuthRequest;
-import com.persistencia.practica1.dtos.AuthResponse;
+import com.persistencia.practica1.entities.User;
+import com.persistencia.practica1.security.UserDetailsImpl;
+import com.persistencia.practica1.security.UserDetailsServiceImpl;
+import com.persistencia.practica1.services.UserService;
 import com.persistencia.practica1.util.JwtTokenUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
-// PASO 6: Clase REST Controller con endpoints de seguridad
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 @RestController
 @RequestMapping("/auth")
+@CrossOrigin(origins = "*")
 public class AuthController {
 
     @Autowired
@@ -24,25 +32,124 @@ public class AuthController {
     private JwtTokenUtil jwtTokenUtil;
 
     @Autowired
-    private UserDetailsService userDetailsService;
+    private UserService userService;
 
-    // Ruta a la que atacarás desde POSTMAN con tu usuario y contraseña
+    @Autowired
+    private UserDetailsServiceImpl userDetailsServiceImpl;
+
+    // DTOs para requests y responses
+    public static class LoginRequest {
+        @Valid
+        public String username;
+        public String password;
+    }
+
+    public static class RegisterRequest {
+        public String username;
+        public String password;
+        public String email;
+        public Set<String> roles;
+    }
+
+    public static class AuthResponse {
+        public String token;
+        public String type = "Bearer";
+        public String username;
+        public String email;
+        public Set<String> roles;
+
+        public AuthResponse(String token, String username, String email, Set<String> roles) {
+            this.token = token;
+            this.username = username;
+            this.email = email;
+            this.roles = roles;
+        }
+    }
+
     @PostMapping("/login")
-    public ResponseEntity<?> createAuthenticationToken(@RequestBody AuthRequest authRequest) throws Exception {
+    public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
         try {
-            // Spring Security comprueba que "admin" y "admin123" son correctos
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(authRequest.getUsername(), authRequest.getPassword())
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(loginRequest.username, loginRequest.password)
             );
-        } catch (BadCredentialsException e) {
-            return ResponseEntity.status(401).body("Acceso Denegado: Usuario o contraseña incorrectos");
+
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+
+            Set<String> roles = userDetails.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .collect(Collectors.toSet());
+
+            String token = jwtTokenUtil.generateToken(userDetails.getUsername(), roles);
+
+            return ResponseEntity.ok(new AuthResponse(
+                    token,
+                    userDetails.getUsername(),
+                    userDetails.getUser().getEmail(),
+                    roles
+            ));
+        } catch (Exception e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "Credenciales inválidas");
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
+        try {
+            Set<String> roles = registerRequest.roles != null ? registerRequest.roles : Set.of("ROLE_USER");
+
+            User user = userService.createUser(
+                    registerRequest.username,
+                    registerRequest.password,
+                    registerRequest.email,
+                    roles
+            );
+
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(registerRequest.username, registerRequest.password)
+            );
+
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            Set<String> userRoles = user.getRoles().stream()
+                    .map(role -> role.getName().name())
+                    .collect(Collectors.toSet());
+
+            String token = jwtTokenUtil.generateToken(registerRequest.username, userRoles);
+
+            return ResponseEntity.ok(new AuthResponse(
+                    token,
+                    user.getUsername(),
+                    user.getEmail(),
+                    userRoles
+            ));
+        } catch (Exception e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser(Authentication authentication) {
+        if (authentication == null) {
+            return ResponseEntity.status(401).body("No autenticado");
         }
 
-        // Si son correctos, cogemos el usuario y ordenamos a JwtTokenUtil que fabrique el Token
-        final UserDetails userDetails = userDetailsService.loadUserByUsername(authRequest.getUsername());
-        final String token = jwtTokenUtil.generateToken(userDetails);
+        String username = (String) authentication.getPrincipal();
+        UserDetailsImpl userDetails = (UserDetailsImpl) userDetailsServiceImpl.loadUserByUsername(username);
 
-        // Devolvemos el JSON: { "token": "eyJhGci..." }
-        return ResponseEntity.ok(new AuthResponse(token));
+        Set<String> userRoles = userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+
+        Map<String, Object> userInfo = new HashMap<>();
+        userInfo.put("username", userDetails.getUsername());
+        userInfo.put("email", userDetails.getUser().getEmail());
+        userInfo.put("roles", userRoles);
+
+        return ResponseEntity.ok(userInfo);
     }
 }

@@ -21,8 +21,16 @@ public class ProyectoHeroesApplication {
 
     // Este Bean se ejecuta automáticamente al arrancar Spring Boot
     @Bean
-    public CommandLineRunner initData(HeroeService heroeService, EquipoService equipoService, PoderService poderService) {
+    public CommandLineRunner initData(HeroeService heroeService, EquipoService equipoService, PoderService poderService, com.persistencia.practica1.repositories.RoleRepository roleRepository) {
         return args -> {
+            // 0. Inyectamos los Roles de Seguridad primero
+            if (roleRepository.count() == 0) {
+                System.out.println(">>> INYECTANDO ROLES DE SEGURIDAD (RBAC)...");
+                roleRepository.save(new com.persistencia.practica1.entities.Role(com.persistencia.practica1.entities.Role.RoleName.ROLE_USER));
+                roleRepository.save(new com.persistencia.practica1.entities.Role(com.persistencia.practica1.entities.Role.RoleName.ROLE_ADMIN));
+                roleRepository.save(new com.persistencia.practica1.entities.Role(com.persistencia.practica1.entities.Role.RoleName.ROLE_MODERATOR));
+            }
+
             // Verificamos si la base de datos ya tiene datos para no duplicarlos cada vez que des a Play
             if (heroeService.findAll().isEmpty()) {
                 System.out.println(">>> LA BASE DE DATOS ESTÁ VACÍA. INYECTANDO DATOS DE PRUEBA...");
