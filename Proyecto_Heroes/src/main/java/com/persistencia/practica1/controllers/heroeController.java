@@ -9,6 +9,8 @@ import com.persistencia.practica1.entities.Heroe;
 import com.persistencia.practica1.services.HeroeService;
 import com.persistencia.practica1.dtos.PoderesUpdateDTO;
 
+import org.springframework.security.access.annotation.Secured;
+
 @RestController
 @RequestMapping("/api/v1/heroes")
 public class heroeController {
@@ -29,6 +31,7 @@ public class heroeController {
     }
     
     @PostMapping
+    @Secured("ROLE_ADMIN") // Rúbrica: Prueba de roles por método
     public Heroe create(@RequestBody Heroe heroe) {
         return service.save(heroe);
     }

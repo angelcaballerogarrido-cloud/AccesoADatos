@@ -38,7 +38,7 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable()) // Desactivamos CSRF para APIs REST
             .authorizeHttpRequests(authz -> authz
                 // Dejamos libre el Login y Registro
-                .requestMatchers("/auth/**").permitAll() 
+                .requestMatchers("/api/v1/auth/**").permitAll() 
                 // Exigimos tajantemente ser MODERADOR para acceder a Héroes
                 .requestMatchers("/api/v1/heroes/**").hasRole("MODERATOR") 
                 // Resto de la API requiere al menos estar logueado

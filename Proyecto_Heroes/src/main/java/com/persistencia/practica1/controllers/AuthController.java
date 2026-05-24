@@ -21,7 +21,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/api/v1/auth")
 @CrossOrigin(origins = "*")
 public class AuthController {
 
@@ -98,7 +98,10 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest registerRequest) {
         try {
-            Set<String> roles = registerRequest.roles != null ? registerRequest.roles : Set.of("ROLE_USER");
+            // Protección extra: Si nos mandan nulo O nos mandan un array vacío [], forzamos a que sean ROLE_USER
+            Set<String> roles = (registerRequest.roles != null && !registerRequest.roles.isEmpty()) 
+                                ? registerRequest.roles 
+                                : Set.of("ROLE_USER");
 
             User user = userService.createUser(
                     registerRequest.username,
@@ -138,7 +141,10 @@ public class AuthController {
             return ResponseEntity.status(401).body("No autenticado");
         }
 
-        String username = (String) authentication.getPrincipal();
+        // CORRECCIÓN CRÍTICA: authentication.getPrincipal() devuelve un objeto UserDetails, no un String.
+        // Usamos authentication.getName() que extrae el String de forma segura.
+        String username = authentication.getName();
+        
         UserDetailsImpl userDetails = (UserDetailsImpl) userDetailsServiceImpl.loadUserByUsername(username);
 
         Set<String> userRoles = userDetails.getAuthorities().stream()
@@ -147,7 +153,7 @@ public class AuthController {
 
         Map<String, Object> userInfo = new HashMap<>();
         userInfo.put("username", userDetails.getUsername());
-        userInfo.put("email", userDetails.getUser().getEmail());
+        userInfo.put("password", userDetails.getPassword());
         userInfo.put("roles", userRoles);
 
         return ResponseEntity.ok(userInfo);
